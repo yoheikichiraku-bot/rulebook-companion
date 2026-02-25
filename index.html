@@ -934,7 +934,9 @@ function updateHighlights(){const cur=S.currentPara;S.paras.forEach((p,i)=>{let 
 // iOS Safari requires user-gesture to unlock audio. We create a shared Audio element
 // on first user click and reuse it, so auto-advance to next paragraph works.
 let _iosAudioUnlocked=false;
-let _audioPool=[];
+// iOS strategy: use ONE persistent Audio element, never reset src to ''
+let _persistentAudio=null;
+const _silentMp3='data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwMHAAAAAAD/+1AEAAAAAAL0AAAAAgAAXoAAAAEEAAGkAAAAIAAANIAAAAQAABGkJAAACEAAAAIwAAAAAAAAAAAAA//tQBAAAAAAAADSAAAAAAAAA0gAAABAAAABpAAAACAAADSAAAAIAAAAMf/7UAQAAAABkA0gAAAAAAANIAAAAAAAAA0gAAAAAAABpAAAAA';
 
 function unlockAudio(){
   try{
@@ -944,25 +946,26 @@ function unlockAudio(){
     src.buffer=buf;src.connect(ctx.destination);src.start(0);
     ctx.resume();
   }catch(e){}
-  if(_iosAudioUnlocked)return;
-  _iosAudioUnlocked=true;
-  // Pre-create pool of Audio elements with silent src to unlock iOS
-  for(let i=0;i<10;i++){
-    const a=new Audio();
-    a.src='data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwMHAAAAAAD/+1AEAAAAAAL0AAAAAgAAXoAAAAEEAAGkAAAAIAAANIAAAAQAABGkJAAACEAAAAIwAAAAAAAAAAAAA//tQBAAAAAAAADSAAAAAAAAA0gAAABAAAABpAAAACAAADSAAAAIAAAAMf/7UAQAAAABkA0gAAAAAAANIAAAAAAAAA0gAAAAAAABpAAAAA';
-    a.load();
-    a.volume=1;
-    _audioPool.push(a);
+  if(!_persistentAudio){
+    _persistentAudio=new Audio();
+    _persistentAudio.src=_silentMp3;
+    _persistentAudio.load();
+    _persistentAudio.volume=1;
+    // Play silent audio to fully unlock on iOS
+    try{_persistentAudio.play().then(()=>{_persistentAudio.pause()}).catch(()=>{})}catch(e){}
   }
+  _iosAudioUnlocked=true;
 }
-function getPooledAudio(){
-  if(_audioPool.length>0)return _audioPool.pop();
-  return new Audio();
+function getAudioElement(){
+  if(_persistentAudio)return _persistentAudio;
+  _persistentAudio=new Audio();
+  _persistentAudio.volume=1;
+  return _persistentAudio;
 }
 document.addEventListener('touchstart',unlockAudio,{once:true});
 document.addEventListener('click',unlockAudio,{once:true});
 
-function stopAudio(){if(S.ttsAbort){S.ttsAbort.abort();S.ttsAbort=null};if(S.currentAudio){if(S.timeUpdater)S.currentAudio.removeEventListener('timeupdate',S.timeUpdater);S.currentAudio.pause();S.currentAudio.src='';S.currentAudio=null};if(window.speechSynthesis)speechSynthesis.cancel();S.isPlaying=false;S.isGenerating=false}
+function stopAudio(){if(S.ttsAbort){S.ttsAbort.abort();S.ttsAbort=null};if(_persistentAudio){if(S.timeUpdater)_persistentAudio.removeEventListener('timeupdate',S.timeUpdater);_persistentAudio.pause();S.currentAudio=null};if(window.speechSynthesis)speechSynthesis.cancel();S.isPlaying=false;S.isGenerating=false}
 function stopAndReset(){stopAudio();S.currentPara=-1;updateHighlights();updateBar()}
 function jumpTo(idx){stopAudio();playFrom(idx)}
 function togglePlay(){if(S.isPlaying||S.isGenerating){stopAudio();updateBar();updateHighlights();return};playFrom(S.currentPara>=0?S.currentPara:0)}
@@ -1035,33 +1038,28 @@ async function playFrom(startIdx){
 
 function playAudioUrl(url,controller,ci,total){
   return new Promise((resolve,reject)=>{
-    const a=getPooledAudio();
+    const a=getAudioElement();
+    // Clean up previous listeners
+    if(S.timeUpdater)a.removeEventListener('timeupdate',S.timeUpdater);
+    a.onended=null;a.onerror=null;
+    // Set new source
+    a.pause();
     a.src=url;
     a.volume=1;
     S.currentAudio=a;
-    function returnToPool(){a.removeEventListener('timeupdate',S.timeUpdater);a.src='';a.load();_audioPool.push(a)}
+    let resolved=false;
+    function done(){if(resolved)return;resolved=true;a.removeEventListener('timeupdate',S.timeUpdater);a.onended=null;a.onerror=null;resolve()}
+    function fail(e){if(resolved)return;resolved=true;a.removeEventListener('timeupdate',S.timeUpdater);a.onended=null;a.onerror=null;reject(e)}
     S.timeUpdater=()=>{if(a.duration&&isFinite(a.duration)){$('pbFill').style.width=Math.round((ci+a.currentTime/a.duration)/total*100)+'%';$('pbTime').textContent=fmtTime(Math.floor(a.currentTime))+'/'+fmtTime(Math.floor(a.duration))}};
     a.addEventListener('timeupdate',S.timeUpdater);
-    a.onended=()=>{returnToPool();resolve()};
-    a.onerror=e=>{returnToPool();reject(e)};
-    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';_audioPool.push(a);resolve()},{once:true});
+    a.onended=done;
+    a.onerror=e=>fail(new Error('Audio playback error'));
+    controller.signal.addEventListener('abort',()=>{a.pause();done()},{once:true});
     a.play().catch(e=>{
       if(e.name==='NotAllowedError'){
-        // Re-unlock and retry once
-        returnToPool();
-        unlockAudio();
-        const a2=getPooledAudio();
-        a2.src=url;a2.volume=1;S.currentAudio=a2;
-        a2.addEventListener('timeupdate',S.timeUpdater);
-        a2.onended=()=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.src='';a2.load();_audioPool.push(a2);resolve()};
-        a2.onerror=e2=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.src='';a2.load();_audioPool.push(a2);reject(e2)};
-        controller.signal.addEventListener('abort',()=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.pause();a2.src='';_audioPool.push(a2);resolve()},{once:true});
-        a2.play().catch(e2=>{
-          a2.src='';a2.load();_audioPool.push(a2);
-          showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
-          resolve();
-        });
-      }else{returnToPool();reject(e)}
+        showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
+        done();
+      }else fail(e);
     });
   })
 }
