@@ -459,13 +459,16 @@ async function loadPDF(file){
         if(prevLine){
           const yGap=Math.abs(prevLine.y-line.y);
           const avgFS=(prevLine.fontSize+line.fontSize)/2||12;
-          // Large Y gap = paragraph break
-          if(yGap>avgFS*1.8)breakBefore=true;
-          // Font size changed significantly (heading)
-          if(line.fontSize>medianFS*1.2&&prevLine.fontSize<=medianFS*1.1)breakBefore=true;
-          if(prevLine.fontSize>medianFS*1.2&&line.fontSize<=medianFS*1.1)breakBefore=true;
-          // Section number pattern at start of line
-          if(/^\d{1,2}[\.\)]\s/.test(line.text)||/^[■●◆★【]/.test(line.text))breakBefore=true;
+          // Large Y gap = paragraph break (increased threshold)
+          if(yGap>avgFS*2.5)breakBefore=true;
+          // Font size increased significantly AND line has substantial text (heading)
+          if(line.fontSize>medianFS*1.3&&prevLine.fontSize<=medianFS*1.1&&line.text.length>5)breakBefore=true;
+          // Heading ended - font size dropped back to normal AND previous was heading-like
+          if(prevLine.fontSize>medianFS*1.3&&line.fontSize<=medianFS*1.1&&prevLine.text.length>5)breakBefore=true;
+          // Section number pattern: must have meaningful text after the number
+          if(/^\d{1,2}[\.\)]\s+\S{2,}/.test(line.text))breakBefore=true;
+          // Japanese section markers with text
+          if(/^[■●◆★【].{2,}/.test(line.text))breakBefore=true;
         }
 
         if(breakBefore&&buf.trim()){
@@ -477,10 +480,25 @@ async function loadPDF(file){
       }
       if(buf.trim())pageParagraphs.push({text:buf.trim(),fontSize:bufFS});
 
+      // Merge very short paragraphs (< 10 chars) into neighbors
+      const merged=[];
+      for(let mi=0;mi<pageParagraphs.length;mi++){
+        const p=pageParagraphs[mi];
+        if(p.text.length<10&&merged.length>0&&!/^\d{1,2}[\.\)]\s/.test(p.text)){
+          // Append to previous paragraph
+          merged[merged.length-1].text+=' '+p.text;
+        }else if(p.text.length<10&&mi<pageParagraphs.length-1&&!/^\d{1,2}[\.\)]\s/.test(p.text)){
+          // Prepend to next paragraph
+          pageParagraphs[mi+1].text=p.text+' '+pageParagraphs[mi+1].text;
+        }else{
+          merged.push({...p});
+        }
+      }
+
       // Store page text
-      const pageText=pageParagraphs.map(p=>p.text).join('\n\n');
+      const pageText=merged.map(p=>p.text).join('\n\n');
       S.pages.push(pageText);
-      S.pageLines.push(pageParagraphs);
+      S.pageLines.push(merged);
       allText+=pageText+'\n\n';
       pg.cleanup();
     }
@@ -507,19 +525,19 @@ function buildFullText(){
     // Fallback: split by double newline
     const rawP=paragraphs.length?paragraphs:pageText.split(/\n\s*\n+/).map(p=>p.trim()).filter(p=>p.length>3);
 
-    // Further split very long paragraphs (>500 chars) at sentence boundaries
+    // Further split very long paragraphs (>800 chars) at sentence boundaries
     const splitParas=[];
     rawP.forEach(p=>{
-      if(p.length<=500){splitParas.push(p);return}
-      // Split at section-number patterns within the text
-      const parts=p.split(/(?=\d{1,2}[\.\)]\s)|(?=■|●|◆|★|【)/).map(s=>s.trim()).filter(s=>s.length>3);
+      if(p.length<=800){splitParas.push(p);return}
+      // Split at section-number patterns within the text (e.g. "01. はじめに")
+      const parts=p.split(/(?=\d{1,2}[\.\)]\s+\S{2,})|(?=[■●◆★]\s*\S{2,})|(?=【.+?】)/).map(s=>s.trim()).filter(s=>s.length>10);
       if(parts.length>1){parts.forEach(pt=>splitParas.push(pt))}
       else{
-        // Split at sentence boundaries
-        const sents=p.split(/(?<=[。！？\.\!\?])\s*/).filter(s=>s.length>2);
+        // Split at sentence boundaries for very long blocks
+        const sents=p.split(/(?<=[。！？])\s*/).filter(s=>s.length>2);
         let buf='';
         sents.forEach(s=>{
-          if(buf.length+s.length>400&&buf.length>50){splitParas.push(buf.trim());buf=s}
+          if(buf.length+s.length>600&&buf.length>100){splitParas.push(buf.trim());buf=s}
           else buf+=(buf?' ':'')+s;
         });
         if(buf.trim())splitParas.push(buf.trim());
