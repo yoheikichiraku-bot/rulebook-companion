@@ -201,16 +201,16 @@ input{-webkit-appearance:none;border-radius:9px}
   <div><h1>ルールブック・コンパニオン</h1><div class="header-sub">朗読 ・ AI要約 ・ 用語集 ・ フロー図 ・ シナリオ ・ Q&A</div></div>
   <div class="header-right">
     <div id="fileBadge" class="file-badge hidden"><span class="dot"></span><span id="fileNameBadge"></span></div>
-    <button class="hdr-btn" onclick="resetApp()" id="resetBtn" style="display:none" title="別のPDF">🔄</button>
+    <button class="hdr-btn" onclick="resetApp()" id="resetBtn" style="display:none" title="別のファイル">🔄</button>
   </div>
 </div>
 
 <!-- Upload -->
 <div id="uploadScreen">
   <div class="upload-zone" id="uploadZone">
-    <input type="file" id="fileInput" accept=".pdf" hidden>
-    <div id="uploadContent"><div class="upload-icon">📖</div><p class="upload-main">ルールブックPDFをドロップ</p><p class="upload-sub">またはクリックしてファイルを選択</p></div>
-    <div id="uploadLoading" class="hidden"><div class="spinner"></div><p>PDFを読み込み中...</p></div>
+    <input type="file" id="fileInput" accept=".pdf,image/*" multiple hidden>
+    <div id="uploadContent"><div class="upload-icon">📖</div><p class="upload-main">ルールブックをアップロード</p><p class="upload-sub">PDF or 画像（複数ページOK）をドロップ / クリック</p><p style="font-size:11px;color:var(--text2);margin-top:4px">📷 スクリーンショットや写真もOK（Claude Vision使用）</p></div>
+    <div id="uploadLoading" class="hidden"><div class="spinner"></div><p id="uploadStatus">読み込み中...</p></div>
   </div>
   <div id="setupHint" style="text-align:center;margin-top:-12px;margin-bottom:16px"><button class="btn" onclick="switchTab('settings')">⚙️ まずAPIキーを設定</button></div>
 </div>
@@ -408,7 +408,90 @@ function buildEngineGrid(){
 function buildVoiceGrid(){const g=$('voiceGrid');g.innerHTML='';VOICES.forEach(v=>{const b=document.createElement('button');b.className='voice-chip'+(S.ttsVoice===v.id?' active':'');b.innerHTML=`<span class="voice-name">${v.name}</span><span class="voice-desc">${v.desc}</span>`;b.onclick=()=>{S.ttsVoice=v.id;localStorage.setItem('ttsVoice',v.id);g.querySelectorAll('.voice-chip').forEach(c=>c.classList.remove('active'));b.classList.add('active')};g.appendChild(b)})}
 
 // === Upload ===
-function setupUpload(){const z=$('uploadZone'),f=$('fileInput');z.onclick=()=>f.click();f.onchange=()=>{if(f.files[0])loadPDF(f.files[0])};z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};z.ondragleave=()=>z.classList.remove('drag-over');z.ondrop=e=>{e.preventDefault();z.classList.remove('drag-over');if(e.dataTransfer.files[0])loadPDF(e.dataTransfer.files[0])}}
+function setupUpload(){
+  const z=$('uploadZone'),f=$('fileInput');
+  z.onclick=()=>f.click();
+  f.onchange=()=>{if(f.files.length)handleFiles(f.files)};
+  z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};
+  z.ondragleave=()=>z.classList.remove('drag-over');
+  z.ondrop=e=>{e.preventDefault();z.classList.remove('drag-over');if(e.dataTransfer.files.length)handleFiles(e.dataTransfer.files)};
+}
+function handleFiles(fileList){
+  const files=Array.from(fileList);
+  const pdf=files.find(f=>f.type==='application/pdf'||f.name.endsWith('.pdf'));
+  const images=files.filter(f=>f.type.startsWith('image/'));
+  if(pdf)loadPDF(pdf);
+  else if(images.length)loadImages(images);
+  else alert('PDFまたは画像ファイルを選択してください');
+}
+
+async function loadImages(files){
+  if(!S.claudeKey){alert('画像読み取りにはClaude APIキーが必要です。設定タブで入力してください。');switchTab('settings');return}
+  $('uploadContent').classList.add('hidden');$('uploadLoading').classList.remove('hidden');
+  try{
+    // Sort files by name
+    files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+    S.pages=[];S.pageLines=[];let allText='';
+
+    for(let i=0;i<files.length;i++){
+      $('uploadStatus').textContent=`画像を読み取り中... (${i+1}/${files.length})`;
+      const base64=await fileToBase64(files[i]);
+      const mediaType=files[i].type||'image/png';
+
+      // Send to Claude Vision for OCR
+      const text=await ocrWithClaude(base64,mediaType,i+1,files.length);
+      if(text){
+        S.pages.push(text);
+        S.pageLines.push([{text,fontSize:12}]);
+        allText+=text+'\n\n';
+      }
+      // Rate limit between API calls
+      if(i<files.length-1)await new Promise(r=>setTimeout(r,1000));
+    }
+
+    if(!S.pages.length){alert('テキストを抽出できませんでした');$('uploadContent').classList.remove('hidden');$('uploadLoading').classList.add('hidden');return}
+
+    S.ruleText=allText;S.sections={};S.currentPara=-1;S.markers=[];S.tocParas=new Set();S.sectionStarts=[];
+    const name=files.length===1?files[0].name:`${files.length}枚の画像`;
+    $('fileNameBadge').textContent=name;$('fileBadge').classList.remove('hidden');$('resetBtn').style.display='';
+    $('rawText').textContent=allText;
+    buildFullText();
+    $('uploadScreen').classList.add('hidden');$('appScreen').classList.remove('hidden');switchTab('reader');
+  }catch(e){alert('画像読み取りエラー: '+e.message)}
+  $('uploadContent').classList.remove('hidden');$('uploadLoading').classList.add('hidden');
+}
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result.split(',')[1]);
+    r.onerror=()=>reject(new Error('ファイル読み込み失敗'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function ocrWithClaude(base64,mediaType,pageNum,totalPages){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':S.claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:4000,
+      system:'あなたはボードゲームのルールブック画像からテキストを正確に読み取る専門家です。画像内の全テキストを読み取り、原文のまま忠実に出力してください。レイアウトの段落構造を保持し、見出しと本文を区別してください。画像内のイラストや図表の説明は不要です。テキストのみ出力してください。',
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+        {type:'text',text:`この画像（${pageNum}/${totalPages}ページ目）のテキストを全て読み取ってください。見出しは独立した行にし、段落間は空行を入れてください。`}
+      ]}]
+    })
+  });
+  if(!res.ok){
+    const e=await res.json().catch(()=>({}));
+    if(res.status===429){await new Promise(r=>setTimeout(r,15000));return ocrWithClaude(base64,mediaType,pageNum,totalPages)}
+    throw new Error(e.error?.message||'OCR API error: '+res.status);
+  }
+  const d=await res.json();
+  return d.content?.[0]?.text||'';
+}
 async function loadPDF(file){
   $('uploadContent').classList.add('hidden');$('uploadLoading').classList.remove('hidden');
   try{
@@ -520,9 +603,13 @@ function buildFullText(){
     const navBtn=document.createElement('button');navBtn.className='sec-nav-btn';navBtn.textContent=`P${pi+1}`;navBtn.onclick=()=>{$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'})};nav.appendChild(navBtn);
     const divider=document.createElement('div');divider.className='page-divider';divider.id='page-div-'+pi;divider.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${pi+1}</span><div class="page-divider-line"></div>`;container.appendChild(divider);
 
-    // Use pageLines if available for better paragraph splitting
-    const paragraphs=S.pageLines&&S.pageLines[pi]?S.pageLines[pi].map(p=>p.text):[];
-    // Fallback: split by double newline
+    // Use pageLines if available for better paragraph splitting (PDF)
+    // For image-sourced text, pageLines has one element, so fall back to newline split
+    let paragraphs=[];
+    if(S.pageLines&&S.pageLines[pi]&&S.pageLines[pi].length>1){
+      paragraphs=S.pageLines[pi].map(p=>p.text);
+    }
+    // Fallback: split by double newline (works well for Claude Vision OCR output)
     const rawP=paragraphs.length?paragraphs:pageText.split(/\n\s*\n+/).map(p=>p.trim()).filter(p=>p.length>3);
 
     // Further split very long paragraphs (>800 chars) at sentence boundaries
