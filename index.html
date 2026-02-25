@@ -364,7 +364,7 @@ const $=id=>document.getElementById(id);
 const TABS=['reader','summary','glossary','flow','scenario','qa','raw','settings'];
 
 const S={
-  ruleText:null,pages:[],paras:[],currentPara:-1,
+  ruleText:null,pages:[],pageLines:[],paras:[],currentPara:-1,
   isPlaying:false,isGenerating:false,
   sections:{},markers:[],tocParas:new Set(),sectionStarts:[],
   openaiKey:localStorage.getItem('openaiKey')||'',
@@ -414,8 +414,76 @@ async function loadPDF(file){
   try{
     const ab=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('ファイル読み込み失敗'));r.readAsArrayBuffer(file)});
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(ab)}).promise;
-    S.pages=[];let allText='';
-    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const content=await pg.getTextContent();let pt='',lastY=null,lastX=null,lastW=0;for(const item of content.items){if(!item.str)continue;const y=Math.round(item.transform[5]),x=item.transform[4];if(lastY!==null&&Math.abs(y-lastY)>5)pt+='\n';else if(lastX!==null&&x-(lastX+lastW)>3)pt+=' ';pt+=item.str;lastY=y;lastX=x;lastW=item.width||item.str.length*5};S.pages.push(pt.trim());allText+=pt+'\n\n';pg.cleanup()}
+    S.pages=[];S.pageLines=[];let allText='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const pg=await pdf.getPage(i);
+      const content=await pg.getTextContent();
+      // Build lines with font size info
+      const lines=[];let curLine={text:'',y:null,x:null,fontSize:0,items:[]};
+      for(const item of content.items){
+        if(!item.str||!item.str.trim())continue;
+        const y=Math.round(item.transform[5]);
+        const x=Math.round(item.transform[4]);
+        const fs=Math.round(item.height||Math.abs(item.transform[3])||12);
+        if(curLine.y!==null&&Math.abs(y-curLine.y)>3){
+          if(curLine.text.trim())lines.push({text:curLine.text.trim(),y:curLine.y,fontSize:curLine.fontSize,x:curLine.x});
+          curLine={text:item.str,y,x,fontSize:fs,items:[item]};
+        }else{
+          // Same line - check for gap
+          if(curLine.x!==null&&curLine.items.length>0){
+            const lastItem=curLine.items[curLine.items.length-1];
+            const lastEnd=lastItem.transform[4]+(lastItem.width||lastItem.str.length*5);
+            if(x-lastEnd>fs*0.5)curLine.text+=' ';
+          }
+          curLine.text+=item.str;
+          if(!curLine.y)curLine.y=y;
+          if(!curLine.x)curLine.x=x;
+          curLine.fontSize=Math.max(curLine.fontSize,fs);
+          curLine.items.push(item);
+        }
+      }
+      if(curLine.text.trim())lines.push({text:curLine.text.trim(),y:curLine.y,fontSize:curLine.fontSize,x:curLine.x});
+
+      // Detect median font size for this page
+      const sizes=lines.map(l=>l.fontSize).filter(s=>s>0);
+      const medianFS=sizes.length?sizes.sort((a,b)=>a-b)[Math.floor(sizes.length/2)]:12;
+
+      // Group lines into paragraphs based on font size changes and Y gaps
+      const pageParagraphs=[];
+      let buf='';let bufFS=0;
+      for(let li=0;li<lines.length;li++){
+        const line=lines[li];
+        const prevLine=li>0?lines[li-1]:null;
+        let breakBefore=false;
+
+        if(prevLine){
+          const yGap=Math.abs(prevLine.y-line.y);
+          const avgFS=(prevLine.fontSize+line.fontSize)/2||12;
+          // Large Y gap = paragraph break
+          if(yGap>avgFS*1.8)breakBefore=true;
+          // Font size changed significantly (heading)
+          if(line.fontSize>medianFS*1.2&&prevLine.fontSize<=medianFS*1.1)breakBefore=true;
+          if(prevLine.fontSize>medianFS*1.2&&line.fontSize<=medianFS*1.1)breakBefore=true;
+          // Section number pattern at start of line
+          if(/^\d{1,2}[\.\)]\s/.test(line.text)||/^[■●◆★【]/.test(line.text))breakBefore=true;
+        }
+
+        if(breakBefore&&buf.trim()){
+          pageParagraphs.push({text:buf.trim(),fontSize:bufFS});
+          buf='';bufFS=0;
+        }
+        buf+=(buf?' ':'')+line.text;
+        bufFS=Math.max(bufFS,line.fontSize);
+      }
+      if(buf.trim())pageParagraphs.push({text:buf.trim(),fontSize:bufFS});
+
+      // Store page text
+      const pageText=pageParagraphs.map(p=>p.text).join('\n\n');
+      S.pages.push(pageText);
+      S.pageLines.push(pageParagraphs);
+      allText+=pageText+'\n\n';
+      pg.cleanup();
+    }
     pdf.cleanup();pdf.destroy();
     S.ruleText=allText;S.sections={};S.currentPara=-1;S.markers=[];S.tocParas=new Set();S.sectionStarts=[];
     $('fileNameBadge').textContent=file.name;$('fileBadge').classList.remove('hidden');$('resetBtn').style.display='';
@@ -425,7 +493,7 @@ async function loadPDF(file){
   }catch(e){alert('PDF読み込みエラー: '+e.message)}
   $('uploadContent').classList.remove('hidden');$('uploadLoading').classList.add('hidden');
 }
-function resetApp(){stopAudio();S.ruleText=null;S.pages=[];S.paras=[];S.sections={};S.currentPara=-1;$('fileBadge').classList.add('hidden');$('resetBtn').style.display='none';$('playbackBar').classList.add('hidden');$('appScreen').classList.add('hidden');$('uploadScreen').classList.remove('hidden');$('fileInput').value='';switchTab('reader')}
+function resetApp(){stopAudio();S.ruleText=null;S.pages=[];S.pageLines=[];S.paras=[];S.sections={};S.currentPara=-1;$('fileBadge').classList.add('hidden');$('resetBtn').style.display='none';$('playbackBar').classList.add('hidden');$('appScreen').classList.add('hidden');$('uploadScreen').classList.remove('hidden');$('fileInput').value='';switchTab('reader')}
 
 // === Build Full Text (page-based) ===
 function buildFullText(){
@@ -433,11 +501,33 @@ function buildFullText(){
   S.pages.forEach((pageText,pi)=>{
     const navBtn=document.createElement('button');navBtn.className='sec-nav-btn';navBtn.textContent=`P${pi+1}`;navBtn.onclick=()=>{$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'})};nav.appendChild(navBtn);
     const divider=document.createElement('div');divider.className='page-divider';divider.id='page-div-'+pi;divider.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${pi+1}</span><div class="page-divider-line"></div>`;container.appendChild(divider);
-    const rawP=pageText.split(/\n\s*\n+|(?<=[.。！？])\s{2,}/).map(p=>p.trim()).filter(p=>p.length>3);
-    const grouped=[];let buf='';
-    for(const p of rawP){if(buf&&buf.length<60&&buf.length+p.length<300){buf+='\n'+p}else{if(buf)grouped.push(buf);buf=p}};if(buf)grouped.push(buf);
-    if(!grouped.length&&pageText.trim().length>3)grouped.push(pageText.trim());
-    grouped.forEach(text=>{const idx=S.paras.length;const pObj={text,translated:null,el:null,isToc:false,page:pi};S.paras.push(pObj);const el=document.createElement('div');el.className='para';el.id='p-'+idx;el.textContent=text;el.onclick=()=>jumpTo(idx);container.appendChild(el);pObj.el=el});
+
+    // Use pageLines if available for better paragraph splitting
+    const paragraphs=S.pageLines&&S.pageLines[pi]?S.pageLines[pi].map(p=>p.text):[];
+    // Fallback: split by double newline
+    const rawP=paragraphs.length?paragraphs:pageText.split(/\n\s*\n+/).map(p=>p.trim()).filter(p=>p.length>3);
+
+    // Further split very long paragraphs (>500 chars) at sentence boundaries
+    const splitParas=[];
+    rawP.forEach(p=>{
+      if(p.length<=500){splitParas.push(p);return}
+      // Split at section-number patterns within the text
+      const parts=p.split(/(?=\d{1,2}[\.\)]\s)|(?=■|●|◆|★|【)/).map(s=>s.trim()).filter(s=>s.length>3);
+      if(parts.length>1){parts.forEach(pt=>splitParas.push(pt))}
+      else{
+        // Split at sentence boundaries
+        const sents=p.split(/(?<=[。！？\.\!\?])\s*/).filter(s=>s.length>2);
+        let buf='';
+        sents.forEach(s=>{
+          if(buf.length+s.length>400&&buf.length>50){splitParas.push(buf.trim());buf=s}
+          else buf+=(buf?' ':'')+s;
+        });
+        if(buf.trim())splitParas.push(buf.trim());
+      }
+    });
+
+    if(!splitParas.length&&pageText.trim().length>3)splitParas.push(pageText.trim());
+    splitParas.forEach(text=>{const idx=S.paras.length;const pObj={text,translated:null,el:null,isToc:false,page:pi};S.paras.push(pObj);const el=document.createElement('div');el.className='para';el.id='p-'+idx;el.textContent=text;el.onclick=()=>jumpTo(idx);container.appendChild(el);pObj.el=el});
   });
   $('playbackBar').classList.remove('hidden');$('translateBtn').classList.remove('hidden');$('statusText').textContent=`${S.pages.length}P / ${S.paras.length}段落`;updateBar();
 }
@@ -470,42 +560,143 @@ function detectHeadingsFromText(){
 
 async function detectSections(){
   if(!S.claudeKey){switchTab('settings');return}
-  $('tocBtn').disabled=true;$('tocBtn').textContent='⏳ 解析中...';$('statusText').textContent='パターン検出中...';
+  $('tocBtn').disabled=true;$('tocBtn').textContent='⏳ 解析中...';
 
-  // Step 1: Pattern-based detection
-  const patternHeadings=detectHeadingsFromText();
-
-  // Step 2: AI refinement
-  $('statusText').textContent='AI解析中...';
   try{
-    const paraList=S.paras.map((p,i)=>`[${i}] ${p.text.slice(0,120).replace(/\n/g,' ')}`);
-    const allMarkers=[];const CHUNK=150;const totalChunks=Math.ceil(paraList.length/CHUNK);
-    for(let c=0;c<totalChunks;c++){
-      const chunk=paraList.slice(c*CHUNK,Math.min((c+1)*CHUNK,paraList.length)).join('\n');
-      $('statusText').textContent=`AI解析中 (${c+1}/${totalChunks})`;
-      const result=await callClaude(`ボードゲームのルールブックの段落リストを分析してください。
-以下を判定してJSON形式のみで出力:
-1. 目次・索引の段落番号(toc)
-2. セクション開始の段落番号とタイトル(sections) - セットアップ、ゲームの流れ、勝利条件など意味のある単位で細かく分割
-パターン検出済みの候補: ${JSON.stringify(patternHeadings.filter(h=>h.paraIdx>=c*CHUNK&&h.paraIdx<(c+1)*CHUNK).map(h=>({para:h.paraIdx,title:h.title})))}
-これらを参考にしつつ、不足しているセクションを追加し、不適切なものは除外してください。
-JSON: {"toc":[段落番号],"sections":[{"para":番号,"title":"短いタイトル"}]}`,chunk);
-      if(result){try{const j=result.match(/\{[\s\S]*\}/);const d=j?JSON.parse(j[0]):{};if(Array.isArray(d.toc))d.toc.forEach(i=>{if(typeof i==='number'&&i>=0&&i<S.paras.length)allMarkers.push({paraIdx:i,type:'toc'})});if(Array.isArray(d.sections))d.sections.forEach(s=>{if(typeof s.para==='number'&&s.title)allMarkers.push({paraIdx:s.para,type:'section',title:String(s.title).trim()})})}catch(e){}}
-      if(c<totalChunks-1)await new Promise(r=>setTimeout(r,1500));
-    }
-    S.tocParas=new Set(allMarkers.filter(m=>m.type==='toc').map(m=>m.paraIdx));
-    S.sectionStarts=allMarkers.filter(m=>m.type==='section').sort((a,b)=>a.paraIdx-b.paraIdx);
+    // Step 1: Find TOC paragraphs and extract section names
+    $('statusText').textContent='目次を検出中...';
+    const allText=S.paras.map(p=>p.text).join('\n');
 
-    // If AI found nothing, fall back to pattern headings
-    if(!S.sectionStarts.length&&patternHeadings.length){
-      S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title}));
+    // Detect TOC entries: lines like "01. はじめに...2" or "Setup ......... 4" or "1. Introduction 3"
+    const tocEntries=[];
+    const tocParaSet=new Set();
+    S.paras.forEach((p,pi)=>{
+      const lines=p.text.split('\n');
+      let tocLineCount=0;
+      lines.forEach(line=>{
+        const l=line.trim();
+        // Match patterns: "01. Name...page" or "Name ..... page" or "1. Name 3"
+        const m=l.match(/^(\d+[\.\)]\s*)?(.+?)\s*[\.…·\-_]{3,}\s*(\d+)\s*$/)
+          ||l.match(/^(\d+[\.\)]\s+)(.{2,50})\s+(\d+)\s*$/);
+        if(m){
+          const title=m[2].replace(/[\.…·\-_\s]+$/,'').trim();
+          if(title.length>=2&&title.length<80){
+            tocEntries.push({title,page:parseInt(m[3]),paraIdx:pi});
+            tocLineCount++;
+          }
+        }
+      });
+      // Also extract from concatenated text (PDF.js sometimes merges TOC into one blob)
+      // e.g. "2 目次 01. はじめに ... 2 02. ゲームの目的 ... 2 03."
+      if(tocLineCount===0){
+        const text=p.text;
+        // Look for repeated "NN. Title ...page" pattern
+        const multiMatch=[...text.matchAll(/(\d{1,2})[\.\)]\s*([^\d\.…]{2,30}?)\s*[\.…·\-_]*\s*(?=\d{1,3}\s|\d{1,2}[\.\)]|$)/g)];
+        if(multiMatch.length>=3){
+          multiMatch.forEach(mm=>{
+            const title=mm[2].trim().replace(/[\.…·\-_\s]+$/,'');
+            if(title.length>=2&&title.length<60)tocEntries.push({title,page:-1,paraIdx:pi});
+          });
+          tocLineCount=multiMatch.length;
+        }
+      }
+      if(tocLineCount>=2)tocParaSet.add(pi);
+    });
+
+    // Step 2: If no TOC found by pattern, ask AI to extract
+    if(tocEntries.length<3){
+      $('statusText').textContent='AIで目次解析中...';
+      const tocResult=await callClaude(`以下のルールブックテキストから目次（Table of Contents）のセクション名を全て抽出してください。
+目次が明示的にない場合は、見出しや章立てからセクション名を推測してください。
+JSON形式のみ: {"entries":["セクション名1","セクション名2",...]}
+番号やページ番号は除き、セクション名のみ抽出。`,S.ruleText.slice(0,10000));
+      if(tocResult){
+        try{
+          const j=tocResult.match(/\{[\s\S]*\}/);
+          const d=j?JSON.parse(j[0]):{};
+          if(Array.isArray(d.entries)){
+            tocEntries.length=0;
+            d.entries.forEach(t=>{if(typeof t==='string'&&t.length>=2)tocEntries.push({title:t.trim(),page:-1,paraIdx:-1})});
+          }
+        }catch(e){}
+      }
     }
 
-    renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション検出`;
+    if(!tocEntries.length){
+      showError('目次が検出できませんでした');
+      $('tocBtn').disabled=false;$('tocBtn').textContent='📑 セクション区切り';
+      $('statusText').textContent='';return;
+    }
+
+    // Step 3: Match each TOC entry to a body paragraph by string matching
+    $('statusText').textContent=`${tocEntries.length}項目を本文にマッチ中...`;
+    const sectionStarts=[];
+    const usedParas=new Set();
+
+    tocEntries.forEach((entry,ei)=>{
+      const title=entry.title;
+      // Normalize for matching: remove spaces, punctuation, lowercase
+      const normalize=s=>s.replace(/[\s　\u3000]+/g,'').replace(/[・\-:：、。]/g,'').toLowerCase();
+      const normTitle=normalize(title);
+      if(normTitle.length<2)return;
+      
+      let bestMatch=-1;let bestScore=0;
+      S.paras.forEach((p,pi)=>{
+        if(tocParaSet.has(pi))return; // skip TOC paragraphs themselves
+        if(usedParas.has(pi))return;
+        const normText=normalize(p.text);
+        const firstLine=normalize((p.text.split('\n')[0]||'').slice(0,100));
+        
+        // Check for "01 はじめに" or "01. はじめに" pattern at start
+        const normTextNoNum=normText.replace(/^\d{1,2}[\.\)]*\s*/,'');
+        const firstLineNoNum=firstLine.replace(/^\d{1,2}[\.\)]*\s*/,'');
+
+        // Best: title matches start of paragraph (with or without number prefix)
+        if(firstLineNoNum.startsWith(normTitle)||firstLine.startsWith(normTitle)){
+          const score=100;
+          if(score>bestScore){bestScore=score;bestMatch=pi}
+        }
+        // Good: title matches start of paragraph text (without number)
+        else if(normTextNoNum.startsWith(normTitle)){
+          const score=90;
+          if(score>bestScore){bestScore=score;bestMatch=pi}
+        }
+        // OK: first line contains the title
+        else if(firstLine.includes(normTitle)){
+          const score=80-Math.min(30,Math.abs(firstLine.length-normTitle.length));
+          if(score>bestScore){bestScore=score;bestMatch=pi}
+        }
+        // Fallback: paragraph text contains the title near the start
+        else if(normText.indexOf(normTitle)>=0&&normText.indexOf(normTitle)<100){
+          const score=60;
+          if(score>bestScore){bestScore=score;bestMatch=pi}
+        }
+      });
+      
+      if(bestMatch>=0&&bestScore>=50){
+        usedParas.add(bestMatch);
+        sectionStarts.push({paraIdx:bestMatch,title:title,level:1});
+      }
+    });
+
+    // Sort by paragraph order
+    sectionStarts.sort((a,b)=>a.paraIdx-b.paraIdx);
+
+    S.tocParas=tocParaSet;
+    S.sectionStarts=sectionStarts;
+
+    // Fallback: pattern-based detection
+    if(!S.sectionStarts.length){
+      const patternHeadings=detectHeadingsFromText();
+      if(patternHeadings.length)S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title,level:1}));
+    }
+
+    renderWithSections();
+    $('statusText').textContent=`✓ ${S.sectionStarts.length}セクション検出`;
   }catch(e){
-    // Fallback to pattern only
+    const patternHeadings=detectHeadingsFromText();
     if(patternHeadings.length){
-      S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title}));
+      S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title,level:1}));
       S.tocParas=new Set();
       renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション (パターン検出)`;
     }else{showError('解析エラー: '+e.message);$('statusText').textContent=''}
@@ -515,7 +706,13 @@ JSON: {"toc":[段落番号],"sections":[{"para":番号,"title":"短いタイト�
 
 function renderWithSections(){
   const container=$('fulltext');container.innerHTML='';
-  const secMap=new Map();S.sectionStarts?.forEach((s,si)=>secMap.set(s.paraIdx,{title:s.title,colorIdx:si}));
+  // Assign color index: level 1 sections get unique colors, subsections inherit parent color
+  let colorIdx=0;
+  const secMap=new Map();
+  S.sectionStarts?.forEach((s,si)=>{
+    if(s.level===1)colorIdx=si;
+    secMap.set(s.paraIdx,{title:s.title,colorIdx:colorIdx,level:s.level||1,idx:si});
+  });
 
   // Build para-to-section mapping
   let currentSecIdx=-1;
@@ -530,9 +727,18 @@ function renderWithSections(){
     if(p.page!==lastPage){lastPage=p.page;const d=document.createElement('div');d.className='page-divider';d.id='page-div-'+p.page;d.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${p.page+1}</span><div class="page-divider-line"></div>`;container.appendChild(d)}
     if(isToc&&(i===0||!S.tocParas?.has(i-1))){const l=document.createElement('div');l.className='toc-label';l.innerHTML='📑 目次エリア <button onclick="skipToContent()">▶ 本文へ</button>';container.appendChild(l)}
     if(secMap.has(i)){
-      const sec=secMap.get(i);const color=getSecColor(sec.colorIdx);
+      const sec=secMap.get(i);const color=getSecColor(sec.colorIdx);const level=sec.level||1;
       const d=document.createElement('div');d.className='sec-divider';d.id='sec-div-'+i;
-      d.innerHTML=`<div class="sec-divider-line right" style="background:linear-gradient(90deg,transparent,${color})"></div><span class="sec-divider-label" style="color:${color}">${esc(sec.title)}</span><div class="sec-divider-line" style="background:linear-gradient(90deg,${color},transparent)"></div><button class="sec-play-btn" style="border-color:${color};color:${color}" onclick="playSection(${i})" title="このセクションを再生">▶</button>`;
+      // Level-based styling
+      const fontSize=level===1?'13px':level===2?'11px':'10px';
+      const fontWeight=level===1?'700':level===2?'600':'500';
+      const margin=level===1?'20px -10px 8px':level===2?'14px -10px 4px':'8px -10px 2px';
+      const indent=level===1?'0':level===2?'12px':'24px';
+      const lineH=level===1?'2px':'1px';
+      const opacity=level===1?'1':level===2?'0.85':'0.7';
+      const prefix=level===1?'▌ ':level===2?'├ ':'└ ';
+      d.style.cssText=`display:flex;align-items:center;gap:8px;margin:${margin};padding:0 10px;padding-left:calc(10px + ${indent})`;
+      d.innerHTML=`<div style="flex:1;height:${lineH};background:linear-gradient(90deg,transparent,${color})"></div><span style="font-size:${fontSize};font-weight:${fontWeight};color:${color};white-space:nowrap;max-width:65%;overflow:hidden;text-overflow:ellipsis;opacity:${opacity}">${prefix}${esc(sec.title)}</span><div style="flex:1;height:${lineH};background:linear-gradient(90deg,${color},transparent)"></div><button class="sec-play-btn" style="border-color:${color};color:${color};width:${level===1?'26':'22'}px;height:${level===1?'26':'22'}px;font-size:${level===1?'12':'10'}px" onclick="playSection(${i})" title="このセクションを再生">▶</button>`;
       container.appendChild(d);
     }
     const el=document.createElement('div');el.className='para'+(isToc?' toc-para':'');el.id='p-'+i;el.textContent=p.translated||p.text;el.onclick=()=>jumpTo(i);
@@ -600,11 +806,14 @@ function buildSecNav(){
   S.pages.forEach((pt,pi)=>{const b=document.createElement('button');b.className='sec-nav-btn';b.textContent=`P${pi+1}`;b.onclick=()=>$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)});
   if(S.sectionStarts?.length){
     const sep=document.createElement('span');sep.style.cssText='width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 3px';nav.appendChild(sep);
+    let colorIdx=0;
     S.sectionStarts.forEach((s,si)=>{
-      const color=getSecColor(si);
+      if(s.level===1)colorIdx=si;
+      const color=getSecColor(colorIdx);
       const b=document.createElement('button');b.className='sec-nav-btn';
       b.style.borderColor=color;b.style.color=color;
-      b.textContent=s.title;
+      if(s.level>=2){b.style.fontSize='10px';b.style.padding='2px 6px';b.style.opacity='0.75'}
+      b.textContent=(s.level>=2?'· ':'')+s.title;
       b.onclick=()=>$('sec-div-'+s.paraIdx)?.scrollIntoView({behavior:'smooth',block:'start'});
       nav.appendChild(b);
     });
