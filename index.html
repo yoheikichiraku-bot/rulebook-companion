@@ -937,8 +937,6 @@ let _iosAudioUnlocked=false;
 let _audioPool=[];
 
 function unlockAudio(){
-  if(_iosAudioUnlocked)return;
-  _iosAudioUnlocked=true;
   try{
     const ctx=new (window.AudioContext||window.webkitAudioContext)();
     const buf=ctx.createBuffer(1,1,22050);
@@ -946,8 +944,10 @@ function unlockAudio(){
     src.buffer=buf;src.connect(ctx.destination);src.start(0);
     ctx.resume();
   }catch(e){}
+  if(_iosAudioUnlocked)return;
+  _iosAudioUnlocked=true;
   // Pre-create pool of Audio elements with silent src to unlock iOS
-  for(let i=0;i<3;i++){
+  for(let i=0;i<10;i++){
     const a=new Audio();
     a.src='data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwMHAAAAAAD/+1AEAAAAAAL0AAAAAgAAXoAAAAEEAAGkAAAAIAAANIAAAAQAABGkJAAACEAAAAIwAAAAAAAAAAAAA//tQBAAAAAAAADSAAAAAAAAA0gAAABAAAABpAAAACAAADSAAAAIAAAAMf/7UAQAAAABkA0gAAAAAAANIAAAAAAAAA0gAAAAAAABpAAAAA';
     a.load();
@@ -1039,16 +1039,29 @@ function playAudioUrl(url,controller,ci,total){
     a.src=url;
     a.volume=1;
     S.currentAudio=a;
+    function returnToPool(){a.removeEventListener('timeupdate',S.timeUpdater);a.src='';a.load();_audioPool.push(a)}
     S.timeUpdater=()=>{if(a.duration&&isFinite(a.duration)){$('pbFill').style.width=Math.round((ci+a.currentTime/a.duration)/total*100)+'%';$('pbTime').textContent=fmtTime(Math.floor(a.currentTime))+'/'+fmtTime(Math.floor(a.duration))}};
     a.addEventListener('timeupdate',S.timeUpdater);
-    a.onended=()=>{a.removeEventListener('timeupdate',S.timeUpdater);resolve()};
-    a.onerror=e=>{a.removeEventListener('timeupdate',S.timeUpdater);reject(e)};
-    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';resolve()},{once:true});
+    a.onended=()=>{returnToPool();resolve()};
+    a.onerror=e=>{returnToPool();reject(e)};
+    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';_audioPool.push(a);resolve()},{once:true});
     a.play().catch(e=>{
       if(e.name==='NotAllowedError'){
-        showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
-        resolve();
-      }else reject(e);
+        // Re-unlock and retry once
+        returnToPool();
+        unlockAudio();
+        const a2=getPooledAudio();
+        a2.src=url;a2.volume=1;S.currentAudio=a2;
+        a2.addEventListener('timeupdate',S.timeUpdater);
+        a2.onended=()=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.src='';a2.load();_audioPool.push(a2);resolve()};
+        a2.onerror=e2=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.src='';a2.load();_audioPool.push(a2);reject(e2)};
+        controller.signal.addEventListener('abort',()=>{a2.removeEventListener('timeupdate',S.timeUpdater);a2.pause();a2.src='';_audioPool.push(a2);resolve()},{once:true});
+        a2.play().catch(e2=>{
+          a2.src='';a2.load();_audioPool.push(a2);
+          showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
+          resolve();
+        });
+      }else{returnToPool();reject(e)}
     });
   })
 }
