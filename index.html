@@ -86,6 +86,9 @@ body{font-family:'Zen Kaku Gothic New','Noto Sans JP',sans-serif;background:var(
 .sec-divider-line{flex:1;height:1px;background:linear-gradient(90deg,var(--accent),transparent)}
 .sec-divider-label{font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap;max-width:70%;overflow:hidden;text-overflow:ellipsis}
 .sec-divider-line.right{background:linear-gradient(90deg,transparent,var(--accent))}
+.sec-play-btn{background:none;border:1px solid rgba(240,160,80,.3);color:var(--accent);border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.sec-play-btn:hover{background:rgba(240,160,80,.15);border-color:var(--accent)}
+.sec-colors{--sc0:#f0a050;--sc1:#50b0f0;--sc2:#80d080;--sc3:#e080c0;--sc4:#c0a0f0;--sc5:#f0d060;--sc6:#60d0d0;--sc7:#f08060}
 .sec-nav{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:10px}
 .sec-nav-btn{padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-family:inherit;font-size:10px;cursor:pointer;transition:.2s;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sec-nav-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -239,7 +242,7 @@ input{-webkit-appearance:none;border-radius:9px}
         </div>
         <div class="reader-hint">💡 段落クリック → 朗読開始。再生中に別の段落クリック → ジャンプ</div>
         <div id="secNav" class="sec-nav hidden"></div>
-        <div id="fulltext" class="fulltext"></div>
+        <div id="fulltext" class="fulltext sec-colors"></div>
       </div>
 
       <!-- SUMMARY -->
@@ -439,40 +442,179 @@ function buildFullText(){
   $('playbackBar').classList.remove('hidden');$('translateBtn').classList.remove('hidden');$('statusText').textContent=`${S.pages.length}P / ${S.paras.length}段落`;updateBar();
 }
 
-// === Section Detection ===
+// === Section Detection (Hybrid: pattern + AI) ===
+const SEC_COLORS=['#f0a050','#50b0f0','#80d080','#e080c0','#c0a0f0','#f0d060','#60d0d0','#f08060'];
+function getSecColor(i){return SEC_COLORS[i%SEC_COLORS.length]}
+
+// Pattern-based heading detection
+function detectHeadingsFromText(){
+  const headings=[];
+  S.paras.forEach((p,i)=>{
+    const t=p.text.trim();
+    const lines=t.split('\n');
+    const firstLine=lines[0]?.trim()||'';
+    // Short line that looks like a heading
+    if(firstLine.length>2&&firstLine.length<80){
+      // ALL CAPS English heading
+      if(/^[A-Z][A-Z\s\d\-:&/]{2,}$/.test(firstLine)){headings.push({paraIdx:i,title:firstLine,confidence:0.8});return}
+      // Numbered sections: "1. Setup", "2.1 Cards", "Section 3:", "Chapter 1"
+      if(/^(\d+[\.\):]?\s+|Section\s+\d|Chapter\s+\d|Phase\s+\d|Step\s+\d|Part\s+\d)/i.test(firstLine)){headings.push({paraIdx:i,title:firstLine.replace(/^[\d\.\):]+\s*/,'').trim()||firstLine,confidence:0.7});return}
+      // Japanese numbered sections: "1. セットアップ", "第1章"
+      if(/^(\d+[\.\)]\s|第\d+[章節部回]|■|●|◆|★|【)/.test(firstLine)){headings.push({paraIdx:i,title:firstLine.replace(/^[\d\.\)]+\s*/,'').replace(/^[■●◆★]\s*/,'').replace(/^【(.+?)】.*/,'$1').trim()||firstLine,confidence:0.7});return}
+      // Short standalone line before longer content (likely a heading)
+      if(firstLine.length<50&&lines.length>=2&&lines[1]?.trim().length>firstLine.length*2){headings.push({paraIdx:i,title:firstLine,confidence:0.5});return}
+    }
+  });
+  return headings;
+}
+
 async function detectSections(){
   if(!S.claudeKey){switchTab('settings');return}
-  $('tocBtn').disabled=true;$('tocBtn').textContent='⏳ 解析中...';$('statusText').textContent='解析中...';
+  $('tocBtn').disabled=true;$('tocBtn').textContent='⏳ 解析中...';$('statusText').textContent='パターン検出中...';
+
+  // Step 1: Pattern-based detection
+  const patternHeadings=detectHeadingsFromText();
+
+  // Step 2: AI refinement
+  $('statusText').textContent='AI解析中...';
   try{
     const paraList=S.paras.map((p,i)=>`[${i}] ${p.text.slice(0,120).replace(/\n/g,' ')}`);
     const allMarkers=[];const CHUNK=150;const totalChunks=Math.ceil(paraList.length/CHUNK);
     for(let c=0;c<totalChunks;c++){
       const chunk=paraList.slice(c*CHUNK,Math.min((c+1)*CHUNK,paraList.length)).join('\n');
-      $('statusText').textContent=`解析中 (${c+1}/${totalChunks})`;
-      const result=await callClaude(`段落リストからセクション見出しと目次を判定。JSON形式のみ:\n{"toc":[段落番号],"sections":[{"para":番号,"title":"名"}]}`,chunk);
+      $('statusText').textContent=`AI解析中 (${c+1}/${totalChunks})`;
+      const result=await callClaude(`ボードゲームのルールブックの段落リストを分析してください。
+以下を判定してJSON形式のみで出力:
+1. 目次・索引の段落番号(toc)
+2. セクション開始の段落番号とタイトル(sections) - セットアップ、ゲームの流れ、勝利条件など意味のある単位で細かく分割
+パターン検出済みの候補: ${JSON.stringify(patternHeadings.filter(h=>h.paraIdx>=c*CHUNK&&h.paraIdx<(c+1)*CHUNK).map(h=>({para:h.paraIdx,title:h.title})))}
+これらを参考にしつつ、不足しているセクションを追加し、不適切なものは除外してください。
+JSON: {"toc":[段落番号],"sections":[{"para":番号,"title":"短いタイトル"}]}`,chunk);
       if(result){try{const j=result.match(/\{[\s\S]*\}/);const d=j?JSON.parse(j[0]):{};if(Array.isArray(d.toc))d.toc.forEach(i=>{if(typeof i==='number'&&i>=0&&i<S.paras.length)allMarkers.push({paraIdx:i,type:'toc'})});if(Array.isArray(d.sections))d.sections.forEach(s=>{if(typeof s.para==='number'&&s.title)allMarkers.push({paraIdx:s.para,type:'section',title:String(s.title).trim()})})}catch(e){}}
       if(c<totalChunks-1)await new Promise(r=>setTimeout(r,1500));
     }
     S.tocParas=new Set(allMarkers.filter(m=>m.type==='toc').map(m=>m.paraIdx));
     S.sectionStarts=allMarkers.filter(m=>m.type==='section').sort((a,b)=>a.paraIdx-b.paraIdx);
-    renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション`;
-  }catch(e){showError('解析エラー: '+e.message);$('statusText').textContent=''}
+
+    // If AI found nothing, fall back to pattern headings
+    if(!S.sectionStarts.length&&patternHeadings.length){
+      S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title}));
+    }
+
+    renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション検出`;
+  }catch(e){
+    // Fallback to pattern only
+    if(patternHeadings.length){
+      S.sectionStarts=patternHeadings.map(h=>({paraIdx:h.paraIdx,title:h.title}));
+      S.tocParas=new Set();
+      renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション (パターン検出)`;
+    }else{showError('解析エラー: '+e.message);$('statusText').textContent=''}
+  }
   $('tocBtn').disabled=false;$('tocBtn').textContent='📑 セクション区切り';
 }
+
 function renderWithSections(){
-  const container=$('fulltext');container.innerHTML='';const secMap=new Map();S.sectionStarts?.forEach(s=>secMap.set(s.paraIdx,s.title));let lastPage=-1;
-  S.paras.forEach((p,i)=>{const isToc=S.tocParas?.has(i);if(p.page!==lastPage){lastPage=p.page;const d=document.createElement('div');d.className='page-divider';d.id='page-div-'+p.page;d.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${p.page+1}</span><div class="page-divider-line"></div>`;container.appendChild(d)}
+  const container=$('fulltext');container.innerHTML='';
+  const secMap=new Map();S.sectionStarts?.forEach((s,si)=>secMap.set(s.paraIdx,{title:s.title,colorIdx:si}));
+
+  // Build para-to-section mapping
+  let currentSecIdx=-1;
+  S.paras.forEach((p,i)=>{
+    if(secMap.has(i))currentSecIdx=secMap.get(i).colorIdx;
+    p.secIdx=currentSecIdx;
+  });
+
+  let lastPage=-1;
+  S.paras.forEach((p,i)=>{
+    const isToc=S.tocParas?.has(i);
+    if(p.page!==lastPage){lastPage=p.page;const d=document.createElement('div');d.className='page-divider';d.id='page-div-'+p.page;d.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${p.page+1}</span><div class="page-divider-line"></div>`;container.appendChild(d)}
     if(isToc&&(i===0||!S.tocParas?.has(i-1))){const l=document.createElement('div');l.className='toc-label';l.innerHTML='📑 目次エリア <button onclick="skipToContent()">▶ 本文へ</button>';container.appendChild(l)}
-    if(secMap.has(i)){const d=document.createElement('div');d.className='sec-divider';d.id='sec-div-'+i;d.innerHTML=`<div class="sec-divider-line right"></div><span class="sec-divider-label">${esc(secMap.get(i))}</span><div class="sec-divider-line"></div>`;container.appendChild(d)}
-    const el=document.createElement('div');el.className='para'+(isToc?' toc-para':'');el.id='p-'+i;el.textContent=p.translated||p.text;el.onclick=()=>jumpTo(i);container.appendChild(el);p.el=el;p.isToc=isToc});
+    if(secMap.has(i)){
+      const sec=secMap.get(i);const color=getSecColor(sec.colorIdx);
+      const d=document.createElement('div');d.className='sec-divider';d.id='sec-div-'+i;
+      d.innerHTML=`<div class="sec-divider-line right" style="background:linear-gradient(90deg,transparent,${color})"></div><span class="sec-divider-label" style="color:${color}">${esc(sec.title)}</span><div class="sec-divider-line" style="background:linear-gradient(90deg,${color},transparent)"></div><button class="sec-play-btn" style="border-color:${color};color:${color}" onclick="playSection(${i})" title="このセクションを再生">▶</button>`;
+      container.appendChild(d);
+    }
+    const el=document.createElement('div');el.className='para'+(isToc?' toc-para':'');el.id='p-'+i;el.textContent=p.translated||p.text;el.onclick=()=>jumpTo(i);
+    // Color-code section
+    if(p.secIdx>=0&&!isToc){
+      const color=getSecColor(p.secIdx);
+      el.style.borderLeftColor=color;
+      el.style.borderLeftWidth='3px';
+    }
+    container.appendChild(el);p.el=el;p.isToc=isToc;
+  });
   buildSecNav();
 }
-function buildSecNav(){const nav=$('secNav');nav.innerHTML='';nav.classList.remove('hidden');S.pages.forEach((pt,pi)=>{const b=document.createElement('button');b.className='sec-nav-btn';b.textContent=`P${pi+1}`;b.onclick=()=>$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)});if(S.sectionStarts?.length){const sep=document.createElement('span');sep.style.cssText='width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 3px';nav.appendChild(sep);S.sectionStarts.forEach(s=>{const b=document.createElement('button');b.className='sec-nav-btn';b.style.borderColor='rgba(240,160,80,.3)';b.textContent=s.title;b.onclick=()=>$('sec-div-'+s.paraIdx)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)})}}
+
+// Play only paragraphs in a specific section
+function playSection(startParaIdx){
+  const secIdx=S.paras[startParaIdx]?.secIdx;
+  if(secIdx===undefined||secIdx<0)return;
+  // Find end of section
+  let endIdx=S.paras.length;
+  for(let i=startParaIdx+1;i<S.paras.length;i++){
+    if(S.paras[i].secIdx!==secIdx&&S.paras[i].secIdx>=0){endIdx=i;break}
+  }
+  stopAudio();
+  playSectionRange(startParaIdx,endIdx);
+}
+
+async function playSectionRange(startIdx,endIdx){
+  const useOpenAI=S.ttsEngine==='openai';
+  if(useOpenAI&&!S.openaiKey){switchTab('settings');showError('OpenAI APIキーが必要です');return}
+  const controller=new AbortController();S.ttsAbort=controller;
+  let prefetchPromise=null;let prefetchIdx=-1;
+  function nextIdx(from){for(let j=from+1;j<endIdx;j++){if(!S.paras[j].isToc)return j};return -1}
+  function startPrefetch(idx){if(idx<0||idx>=endIdx||!useOpenAI)return;const text=S.paras[idx].translated||S.paras[idx].text;const chunks=splitTTS(text);if(!chunks.length)return;prefetchIdx=idx;prefetchPromise=Promise.all(chunks.map(c=>fetchTTS(c).catch(()=>null)))}
+
+  for(let i=startIdx;i<endIdx;i++){
+    if(controller.signal.aborted)return;
+    if(S.paras[i].isToc)continue;
+    S.currentPara=i;S.isGenerating=true;S.isPlaying=false;updateHighlights();updateBar();
+    S.paras[i].el.scrollIntoView({behavior:'smooth',block:'center'});
+    const text=S.paras[i].translated||S.paras[i].text;
+    if(useOpenAI){
+      const chunks=splitTTS(text);if(!chunks.length){S.isGenerating=false;continue}
+      try{
+        let urls;
+        if(prefetchIdx===i&&prefetchPromise){urls=await prefetchPromise;prefetchPromise=null;prefetchIdx=-1}
+        else{urls=[];for(let ci=0;ci<chunks.length;ci++){if(controller.signal.aborted)return;$('pbSub').textContent=chunks.length>1?`生成中 (${ci+1}/${chunks.length})`:'生成中...';urls.push(await fetchTTS(chunks[ci]))}}
+        if(controller.signal.aborted){urls.forEach(u=>{if(u)releaseAudioUrl(u)});return}
+        const ni=nextIdx(i);if(ni>=0)startPrefetch(ni);
+        S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();
+        for(let ci=0;ci<urls.length;ci++){if(controller.signal.aborted)return;if(!urls[ci])continue;$('pbSub').textContent=urls.length>1?`再生中 ${ci+1}/${urls.length}`:'再生中';await playAudioUrl(urls[ci],controller,ci,urls.length);releaseAudioUrl(urls[ci])}
+      }catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
+    }else{
+      S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent='再生中';
+      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar();return}}
+    }
+    S.isGenerating=false;
+  }
+  if(!controller.signal.aborted){S.isPlaying=false;S.isGenerating=false;$('pbTitle').textContent='✓ セクション再生完了';$('pbSub').textContent='';$('pbTime').textContent='';$('pbFill').style.width='100%';updateBar()}
+}
+
+function buildSecNav(){
+  const nav=$('secNav');nav.innerHTML='';nav.classList.remove('hidden');
+  // Page buttons
+  S.pages.forEach((pt,pi)=>{const b=document.createElement('button');b.className='sec-nav-btn';b.textContent=`P${pi+1}`;b.onclick=()=>$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)});
+  if(S.sectionStarts?.length){
+    const sep=document.createElement('span');sep.style.cssText='width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 3px';nav.appendChild(sep);
+    S.sectionStarts.forEach((s,si)=>{
+      const color=getSecColor(si);
+      const b=document.createElement('button');b.className='sec-nav-btn';
+      b.style.borderColor=color;b.style.color=color;
+      b.textContent=s.title;
+      b.onclick=()=>$('sec-div-'+s.paraIdx)?.scrollIntoView({behavior:'smooth',block:'start'});
+      nav.appendChild(b);
+    });
+  }
+}
 function skipToContent(){const i=S.paras.findIndex(p=>!p.isToc);if(i>=0)S.paras[i].el.scrollIntoView({behavior:'smooth',block:'start'})}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 // === Highlights ===
-function updateHighlights(){const cur=S.currentPara;S.paras.forEach((p,i)=>{let cls='para';if(p.isToc)cls+=' toc-para';if(cur>=0){if(i<cur)cls+=' done';else if(i===cur){if(S.isGenerating)cls+=' generating';else if(S.isPlaying)cls+=' playing'}};p.el.className=cls})}
+function updateHighlights(){const cur=S.currentPara;S.paras.forEach((p,i)=>{let cls='para';if(p.isToc)cls+=' toc-para';if(cur>=0){if(i<cur)cls+=' done';else if(i===cur){if(S.isGenerating)cls+=' generating';else if(S.isPlaying)cls+=' playing'}};p.el.className=cls;if(p.secIdx>=0&&!p.isToc&&!(cur>=0&&i===cur)){p.el.style.borderLeftColor=getSecColor(p.secIdx);p.el.style.borderLeftWidth='3px'}else if(cur>=0&&i===cur){p.el.style.borderLeftWidth='3px'}else{p.el.style.borderLeftColor='';p.el.style.borderLeftWidth=''}})}
 
 // === Playback ===
 // iOS Safari requires user-gesture to unlock audio. We create a shared Audio element
