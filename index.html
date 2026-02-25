@@ -895,10 +895,10 @@ async function playSectionRange(startIdx,endIdx){
         const ni=nextIdx(i);if(ni>=0)startPrefetch(ni);
         S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();
         for(let ci=0;ci<urls.length;ci++){if(controller.signal.aborted)return;if(!urls[ci])continue;$('pbSub').textContent=urls.length>1?`再生中 ${ci+1}/${urls.length}`:'再生中';await playAudioUrl(urls[ci],controller,ci,urls.length);releaseAudioUrl(urls[ci])}
-      }catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
+      }catch(e){if(!controller.signal.aborted){showError(`段落${i+1}: ${e.message}`);S.isPlaying=false;S.isGenerating=false;updateBar();await new Promise(r=>setTimeout(r,2000))}}
     }else{
       S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent='再生中';
-      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar();return}}
+      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar()}}
     }
     S.isGenerating=false;
   }
@@ -1023,10 +1023,10 @@ async function playFrom(startIdx){
           await playAudioUrl(urls[ci],controller,ci,urls.length);
           releaseAudioUrl(urls[ci]);
         }
-      }catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
+      }catch(e){if(!controller.signal.aborted){showError(`段落${i+1}: ${e.message}`);S.isPlaying=false;S.isGenerating=false;updateBar();await new Promise(r=>setTimeout(r,2000))}}
     }else{
       S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent='再生中';
-      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar();return}}
+      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar()}}
     }
     S.isGenerating=false;
   }
@@ -1065,7 +1065,7 @@ function showError(m){$('ttsErrorMsg').textContent='⚠️ '+m;$('ttsError').cla
 function cleanForTTS(t){let s=t;s=s.replace(/([a-z])([A-Z])/g,'$1 $2');s=s.replace(/\.{3,}/g,'').replace(/…+/g,'').replace(/[─━═＝]{2,}/g,'').replace(/[★☆●○◆◇■□▲△▼▽♦♣♠♥※＊]+/g,'').replace(/[_~`|]{2,}/g,'').replace(/#{1,}\s*/g,'').replace(/\b[Pp]age\s*\d+\b/gi,'').replace(/-\s*\d+\s*-/g,'').replace(/^\d+\s*$/gm,'').replace(/^[・\-\*•◦▸►]\s*/gm,'').replace(/https?:\/\/\S+/g,'').replace(/[©®™]/g,'').replace(/\([^)]*\.(png|jpg|svg|gif)\)/gi,'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').replace(/^\s+$/gm,'').trim();return s}
 function splitTTS(t,max=4000){const c=cleanForTTS(t);if(!c)return[];if(c.length<=max)return[c];const chunks=[];let r=c;while(r.length>0){if(r.length<=max){chunks.push(r);break};let sp=-1;for(const sep of['。','！','？','.\n','! ','? ','. ']){const i=r.lastIndexOf(sep,max);if(i>max*.3){sp=i+sep.length;break}};if(sp<0){const i=r.lastIndexOf('\n',max);if(i>max*.3)sp=i+1};if(sp<0){for(const sep of['、',', ','; ']){const i=r.lastIndexOf(sep,max);if(i>max*.4){sp=i+sep.length;break}}};if(sp<0)sp=max;chunks.push(r.slice(0,sp).trim());r=r.slice(sp).trim()};return chunks.filter(c=>c.length>0)}
 const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1);
-async function fetchTTS(text){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);try{const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+S.openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'tts-1-hd',input:text,voice:S.ttsVoice,speed:S.ttsSpeed,response_format:'mp3'}),signal:ac.signal});clearTimeout(t);if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'TTS error')};const blob=await res.blob();if(blob.size<100)throw new Error('空の音声');if(_isIOS){const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)});return dataUrl}else{return URL.createObjectURL(blob)}}catch(e){clearTimeout(t);if(e.name==='AbortError')throw new Error('タイムアウト');throw e}}
+async function fetchTTS(text,retries=2){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);try{const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+S.openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'tts-1-hd',input:text,voice:S.ttsVoice,speed:S.ttsSpeed,response_format:'mp3'}),signal:ac.signal});clearTimeout(t);if(!res.ok){const e=await res.json().catch(()=>({}));if(res.status===429&&retries>0){await new Promise(r=>setTimeout(r,3000));return fetchTTS(text,retries-1)};throw new Error(e.error?.message||'TTS error '+res.status)};const blob=await res.blob();if(blob.size<100)throw new Error('空の音声');if(_isIOS){const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)});return dataUrl}else{return URL.createObjectURL(blob)}}catch(e){clearTimeout(t);if(e.name==='AbortError'){if(retries>0){await new Promise(r=>setTimeout(r,2000));return fetchTTS(text,retries-1)};throw new Error('タイムアウト')};if(retries>0&&!e.message?.includes('APIキー')){await new Promise(r=>setTimeout(r,2000));return fetchTTS(text,retries-1)};throw e}}
 function releaseAudioUrl(url){if(!_isIOS&&url&&url.startsWith('blob:'))URL.revokeObjectURL(url)}
 
 // === Translate ===
