@@ -409,9 +409,11 @@ function setupUpload(){const z=$('uploadZone'),f=$('fileInput');z.onclick=()=>f.
 async function loadPDF(file){
   $('uploadContent').classList.add('hidden');$('uploadLoading').classList.remove('hidden');
   try{
-    const ab=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    const ab=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('ファイル読み込み失敗'));r.readAsArrayBuffer(file)});
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(ab)}).promise;
     S.pages=[];let allText='';
-    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const content=await pg.getTextContent();let pt='',lastY=null,lastX=null,lastW=0;for(const item of content.items){if(!item.str)continue;const y=Math.round(item.transform[5]),x=item.transform[4];if(lastY!==null&&Math.abs(y-lastY)>5)pt+='\n';else if(lastX!==null&&x-(lastX+lastW)>3)pt+=' ';pt+=item.str;lastY=y;lastX=x;lastW=item.width||item.str.length*5};S.pages.push(pt.trim());allText+=pt+'\n\n'}
+    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const content=await pg.getTextContent();let pt='',lastY=null,lastX=null,lastW=0;for(const item of content.items){if(!item.str)continue;const y=Math.round(item.transform[5]),x=item.transform[4];if(lastY!==null&&Math.abs(y-lastY)>5)pt+='\n';else if(lastX!==null&&x-(lastX+lastW)>3)pt+=' ';pt+=item.str;lastY=y;lastX=x;lastW=item.width||item.str.length*5};S.pages.push(pt.trim());allText+=pt+'\n\n';pg.cleanup()}
+    pdf.cleanup();pdf.destroy();
     S.ruleText=allText;S.sections={};S.currentPara=-1;S.markers=[];S.tocParas=new Set();S.sectionStarts=[];
     $('fileNameBadge').textContent=file.name;$('fileBadge').classList.remove('hidden');$('resetBtn').style.display='';
     $('rawText').textContent=allText;
