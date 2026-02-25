@@ -476,12 +476,11 @@ function updateHighlights(){const cur=S.currentPara;S.paras.forEach((p,i)=>{let 
 // iOS Safari requires user-gesture to unlock audio. We create a shared Audio element
 // on first user click and reuse it, so auto-advance to next paragraph works.
 let _iosAudioUnlocked=false;
-let _sharedAudio=null;
+let _audioPool=[];
 
 function unlockAudio(){
   if(_iosAudioUnlocked)return;
   _iosAudioUnlocked=true;
-  // Create a tiny silent audio context to unlock playback
   try{
     const ctx=new (window.AudioContext||window.webkitAudioContext)();
     const buf=ctx.createBuffer(1,1,22050);
@@ -489,11 +488,18 @@ function unlockAudio(){
     src.buffer=buf;src.connect(ctx.destination);src.start(0);
     ctx.resume();
   }catch(e){}
-  // Also pre-create shared Audio element
-  _sharedAudio=new Audio();
-  _sharedAudio.volume=1;
-  document.removeEventListener('touchstart',unlockAudio);
-  document.removeEventListener('click',unlockAudio);
+  // Pre-create pool of Audio elements with silent src to unlock iOS
+  for(let i=0;i<3;i++){
+    const a=new Audio();
+    a.src='data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwMHAAAAAAD/+1AEAAAAAAL0AAAAAgAAXoAAAAEEAAGkAAAAIAAANIAAAAQAABGkJAAACEAAAAIwAAAAAAAAAAAAA//tQBAAAAAAAADSAAAAAAAAA0gAAABAAAABpAAAACAAADSAAAAIAAAAMf/7UAQAAAABkA0gAAAAAAANIAAAAAAAAA0gAAAAAAABpAAAAA';
+    a.load();
+    a.volume=1;
+    _audioPool.push(a);
+  }
+}
+function getPooledAudio(){
+  if(_audioPool.length>0)return _audioPool.pop();
+  return new Audio();
 }
 document.addEventListener('touchstart',unlockAudio,{once:true});
 document.addEventListener('click',unlockAudio,{once:true});
@@ -515,7 +521,7 @@ async function playFrom(startIdx){
     const text=S.paras[i].translated||S.paras[i].text;
     if(useOpenAI){
       const chunks=splitTTS(text);if(!chunks.length){S.isGenerating=false;continue}
-      try{for(let ci=0;ci<chunks.length;ci++){if(controller.signal.aborted)return;$('pbSub').textContent=chunks.length>1?`生成中 (${ci+1}/${chunks.length})`:'生成中...';const url=await fetchTTS(chunks[ci]);if(controller.signal.aborted){URL.revokeObjectURL(url);return};S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent=chunks.length>1?`再生中 ${ci+1}/${chunks.length}`:'再生中';await playAudioUrl(url,controller,ci,chunks.length)}}catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
+      try{for(let ci=0;ci<chunks.length;ci++){if(controller.signal.aborted)return;$('pbSub').textContent=chunks.length>1?`生成中 (${ci+1}/${chunks.length})`:'生成中...';const url=await fetchTTS(chunks[ci]);if(controller.signal.aborted)return;S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent=chunks.length>1?`再生中 ${ci+1}/${chunks.length}`:'再生中';await playAudioUrl(url,controller,ci,chunks.length)}}catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
     }else{
       // Browser TTS
       S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent='再生中';
@@ -528,18 +534,16 @@ async function playFrom(startIdx){
 
 function playAudioUrl(url,controller,ci,total){
   return new Promise((resolve,reject)=>{
-    // Reuse shared audio on iOS to avoid autoplay restrictions
-    const a=_sharedAudio||new Audio();
-    _sharedAudio=null; // use once, then create new ones
+    const a=getPooledAudio();
     a.src=url;
+    a.volume=1;
     S.currentAudio=a;
     S.timeUpdater=()=>{if(a.duration&&isFinite(a.duration)){$('pbFill').style.width=Math.round((ci+a.currentTime/a.duration)/total*100)+'%';$('pbTime').textContent=fmtTime(Math.floor(a.currentTime))+'/'+fmtTime(Math.floor(a.duration))}};
     a.addEventListener('timeupdate',S.timeUpdater);
-    a.onended=()=>{a.removeEventListener('timeupdate',S.timeUpdater);URL.revokeObjectURL(url);resolve()};
-    a.onerror=e=>{a.removeEventListener('timeupdate',S.timeUpdater);URL.revokeObjectURL(url);reject(e)};
-    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';URL.revokeObjectURL(url);resolve()},{once:true});
+    a.onended=()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.src='';resolve()};
+    a.onerror=e=>{a.removeEventListener('timeupdate',S.timeUpdater);a.src='';reject(e)};
+    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';resolve()},{once:true});
     a.play().catch(e=>{
-      // iOS might still block - show user-friendly message
       if(e.name==='NotAllowedError'){
         showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
         resolve();
@@ -559,7 +563,7 @@ function showError(m){$('ttsErrorMsg').textContent='⚠️ '+m;$('ttsError').cla
 // === TTS ===
 function cleanForTTS(t){let s=t;s=s.replace(/([a-z])([A-Z])/g,'$1 $2');s=s.replace(/\.{3,}/g,'').replace(/…+/g,'').replace(/[─━═＝]{2,}/g,'').replace(/[★☆●○◆◇■□▲△▼▽♦♣♠♥※＊]+/g,'').replace(/[_~`|]{2,}/g,'').replace(/#{1,}\s*/g,'').replace(/\b[Pp]age\s*\d+\b/gi,'').replace(/-\s*\d+\s*-/g,'').replace(/^\d+\s*$/gm,'').replace(/^[・\-\*•◦▸►]\s*/gm,'').replace(/https?:\/\/\S+/g,'').replace(/[©®™]/g,'').replace(/\([^)]*\.(png|jpg|svg|gif)\)/gi,'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').replace(/^\s+$/gm,'').trim();return s}
 function splitTTS(t,max=4000){const c=cleanForTTS(t);if(!c)return[];if(c.length<=max)return[c];const chunks=[];let r=c;while(r.length>0){if(r.length<=max){chunks.push(r);break};let sp=-1;for(const sep of['。','！','？','.\n','! ','? ','. ']){const i=r.lastIndexOf(sep,max);if(i>max*.3){sp=i+sep.length;break}};if(sp<0){const i=r.lastIndexOf('\n',max);if(i>max*.3)sp=i+1};if(sp<0){for(const sep of['、',', ','; ']){const i=r.lastIndexOf(sep,max);if(i>max*.4){sp=i+sep.length;break}}};if(sp<0)sp=max;chunks.push(r.slice(0,sp).trim());r=r.slice(sp).trim()};return chunks.filter(c=>c.length>0)}
-async function fetchTTS(text){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);try{const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+S.openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'tts-1-hd',input:text,voice:S.ttsVoice,speed:S.ttsSpeed,response_format:'mp3'}),signal:ac.signal});clearTimeout(t);if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'TTS error')};const blob=await res.blob();if(blob.size<100)throw new Error('空の音声');return URL.createObjectURL(blob)}catch(e){clearTimeout(t);if(e.name==='AbortError')throw new Error('タイムアウト');throw e}}
+async function fetchTTS(text){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);try{const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+S.openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'tts-1-hd',input:text,voice:S.ttsVoice,speed:S.ttsSpeed,response_format:'mp3'}),signal:ac.signal});clearTimeout(t);if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'TTS error')};const blob=await res.blob();if(blob.size<100)throw new Error('空の音声');const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)});return dataUrl}catch(e){clearTimeout(t);if(e.name==='AbortError')throw new Error('タイムアウト');throw e}}
 
 // === Translate ===
 async function translateAll(){if(!S.claudeKey){switchTab('settings');return};$('translateBtn').disabled=true;$('translateBtn').textContent='⏳ 翻訳中...';const t=S.paras.filter(p=>!p.translated);for(let i=0;i<t.length;i++){$('statusText').textContent=`翻訳中 ${i+1}/${t.length}`;try{const r=await callClaude('ボードゲームのルールテキストを自然な日本語に翻訳。翻訳のみ出力。',t[i].text.slice(0,5000));if(r){t[i].translated=r;t[i].el.textContent=r};await new Promise(r=>setTimeout(r,1500))}catch(e){showError('翻訳エラー: '+e.message);break}};$('translateBtn').disabled=false;$('translateBtn').textContent='🌐 翻訳';$('statusText').textContent=`${S.pages.length}P / ${S.paras.length}段落`}
@@ -572,7 +576,7 @@ function buildSummSections(){const c=$('sectionsContainer');c.innerHTML='';SUMM.
 async function analyzeSec(k){const s=SUMM.find(x=>x.key===k);$('sph-'+k).classList.add('hidden');$('sl-'+k).classList.remove('hidden');$('st-'+k).classList.add('hidden');$('sa-'+k).classList.add('hidden');try{const r=await callClaude(`ボードゲームルール解説の専門家。以下のルールブックから「${s.prompt}」を日本語で整理。具体的数値を省略せず、自然な文章で。英語なら翻訳。`,S.ruleText.slice(0,8000));if(r){S.sections[k]=r;$('st-'+k).textContent=r;$('st-'+k).classList.remove('hidden');$('sp-'+k).classList.remove('hidden');$('sc-'+k).classList.add('accent')}}catch(e){$('st-'+k).textContent='エラー: '+e.message;$('st-'+k).classList.remove('hidden');$('sa-'+k).classList.remove('hidden')};$('sl-'+k).classList.add('hidden')}
 async function analyzeAll(){$('analyzeAllBtn').disabled=true;for(const s of SUMM){if(!S.sections[s.key]){await analyzeSec(s.key);await new Promise(r=>setTimeout(r,1500))}};$('analyzeAllBtn').disabled=false}
 async function speakSec(k){if(S.sections[k])playDirect(S.sections[k])}
-async function playDirect(text){stopAudio();const ctrl=new AbortController();S.ttsAbort=ctrl;if(S.ttsEngine==='openai'&&S.openaiKey){const chunks=splitTTS(text);try{for(const ch of chunks){if(ctrl.signal.aborted)return;const url=await fetchTTS(ch);if(ctrl.signal.aborted){URL.revokeObjectURL(url);return};await playAudioUrl(url,ctrl,0,1)}}catch(e){if(!ctrl.signal.aborted)showError(e.message)}}else{try{await playBrowserTTS(cleanForTTS(text),ctrl)}catch(e){}}}
+async function playDirect(text){stopAudio();const ctrl=new AbortController();S.ttsAbort=ctrl;if(S.ttsEngine==='openai'&&S.openaiKey){const chunks=splitTTS(text);try{for(const ch of chunks){if(ctrl.signal.aborted)return;const url=await fetchTTS(ch);if(ctrl.signal.aborted)return;await playAudioUrl(url,ctrl,0,1)}}catch(e){if(!ctrl.signal.aborted)showError(e.message)}}else{try{await playBrowserTTS(cleanForTTS(text),ctrl)}catch(e){}}}
 
 // === Glossary ===
 async function generateGlossary(){
