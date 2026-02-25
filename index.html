@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ルールブック・コンパニオン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#242834;--surface:#2a2e3a;--border:#363b4a;--text:#e4e6ed;--text2:#9499a8;--accent:#f0a050;--accent2:#e8784e;--accent-glow:rgba(240,160,80,.12);--green:#5ec490;--blue:#5b9cf0;--red:#e85858}
+body{font-family:'Zen Kaku Gothic New','Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.hidden{display:none!important}
+
+.header{background:linear-gradient(135deg,var(--bg2),#1e2230);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;backdrop-filter:blur(10px)}
+.header-icon{font-size:26px;filter:drop-shadow(0 0 10px rgba(240,160,80,.4))}
+.header h1{font-size:17px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-sub{font-size:10px;color:var(--text2)}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.file-badge{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+.hdr-btn{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+.hdr-btn:hover{border-color:var(--accent);background:var(--accent-glow)}
+
+.upload-zone{margin:40px auto;max-width:520px;border:2px dashed var(--border);border-radius:16px;padding:56px 28px;text-align:center;cursor:pointer;transition:.3s;background:var(--bg2)}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:var(--accent-glow);transform:translateY(-2px)}
+.upload-icon{font-size:44px;margin-bottom:14px}
+.upload-main{font-size:16px;font-weight:500;margin-bottom:6px}
+.upload-sub{font-size:13px;color:var(--text2)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Tabs - scrollable */
+.tabs{display:flex;gap:2px;max-width:960px;margin:0 auto;padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{height:0}
+.tab-btn{padding:9px 12px;border:none;background:var(--bg2);color:var(--text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;border-radius:8px 8px 0 0;transition:.2s;border:1px solid transparent;border-bottom:none;white-space:nowrap;flex-shrink:0}
+.tab-btn:hover{color:var(--text);background:var(--bg3)}
+.tab-btn.active{background:var(--surface);color:var(--accent);border-color:var(--border)}
+.main-area{max-width:960px;margin:0 auto;padding:0 16px 90px}
+.content-area{background:var(--surface);border:1px solid var(--border);border-radius:0 0 14px 14px;padding:18px;min-height:400px}
+
+.tts-error{background:rgba(232,88,88,.15);border:1px solid var(--red);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--red);display:flex;align-items:center;gap:8px}
+.tts-error button{margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:16px}
+
+.btn{padding:8px 16px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);background:var(--accent-glow)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;font-weight:600}
+.btn.primary:hover{opacity:.9}
+.icon-btn{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+.icon-btn:hover{border-color:var(--accent);background:var(--accent-glow)}
+
+/* Card */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.card.accent{border-color:rgba(240,160,80,.2)}
+.card-head{padding:11px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+.card-head h3{font-size:13px;font-weight:600}
+.card-body{padding:14px;font-size:13px;line-height:1.8;white-space:pre-wrap}
+.placeholder{font-size:12px;color:var(--text2);font-style:italic}
+.dot-anim span{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;animation:dotpulse 1.2s ease-in-out infinite}.dot-anim span:nth-child(2){animation-delay:.2s}.dot-anim span:nth-child(3){animation-delay:.4s}
+@keyframes dotpulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* Reader */
+.reader-controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.reader-controls .spacer{flex:1}
+.reader-hint{font-size:11px;color:var(--text2);margin-bottom:10px;padding:7px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)}
+.fulltext{font-size:13px;line-height:2;color:var(--text2);padding-left:30px;position:relative}
+.para{padding:5px 10px;margin:2px -10px;border-radius:6px;cursor:pointer;transition:all .2s;border-left:3px solid transparent;position:relative}
+.para:hover{background:rgba(255,255,255,.03);border-left-color:rgba(240,160,80,.3)}
+.para.done{opacity:.4}
+.para.playing{background:rgba(240,160,80,.1);border-left-color:var(--accent);color:var(--text);opacity:1}
+.para.playing::before{content:'🔊';position:absolute;left:-28px;top:7px;font-size:12px}
+.para.generating{background:rgba(91,156,240,.08);border-left-color:var(--blue);color:var(--text);opacity:1}
+.para.generating::before{content:'⏳';position:absolute;left:-28px;top:7px;font-size:12px;animation:pulse-icon 1s infinite}
+@keyframes pulse-icon{0%,100%{opacity:.4}50%{opacity:1}}
+.para.toc-para{opacity:.3;font-size:12px;line-height:1.6;border-left-color:var(--border)}
+.para.toc-para:hover{opacity:.5}
+.toc-label{display:flex;align-items:center;gap:8px;margin:8px -10px;padding:4px 12px;font-size:11px;color:var(--text2);background:var(--bg2);border-radius:6px;border:1px dashed var(--border)}
+.toc-label button{background:none;border:none;color:var(--accent);font-size:11px;font-family:inherit;cursor:pointer;text-decoration:underline;padding:0}
+.page-divider{display:flex;align-items:center;gap:10px;margin:18px -10px 8px;padding:0 10px}
+.page-divider:first-child{margin-top:0}
+.page-divider-line{flex:1;height:1px;background:var(--border)}
+.page-divider-label{font-size:10px;font-weight:600;color:var(--text2);white-space:nowrap;padding:2px 8px;background:var(--bg3);border-radius:10px}
+.sec-divider{display:flex;align-items:center;gap:10px;margin:16px -10px 6px;padding:0 10px}
+.sec-divider-line{flex:1;height:1px;background:linear-gradient(90deg,var(--accent),transparent)}
+.sec-divider-label{font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap;max-width:70%;overflow:hidden;text-overflow:ellipsis}
+.sec-divider-line.right{background:linear-gradient(90deg,transparent,var(--accent))}
+.sec-nav{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:10px}
+.sec-nav-btn{padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-family:inherit;font-size:10px;cursor:pointer;transition:.2s;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec-nav-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Playback bar */
+.playback-bar{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:8px 16px;z-index:100;display:flex;justify-content:center}
+.playback-inner{max-width:960px;width:100%;display:flex;align-items:center;gap:8px}
+.pb-controls{display:flex;gap:3px;align-items:center;flex-shrink:0}
+.pb-btn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:.2s;background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.pb-btn:hover{border-color:var(--accent)}
+.pb-main{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;width:40px;height:40px;font-size:18px;border:none}
+.pb-main:hover{filter:brightness(1.1)}
+.pb-skip{font-size:9px;font-weight:700;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;flex-shrink:0}
+.pb-skip:hover{border-color:var(--accent);color:var(--accent)}
+.pb-info{flex:1;min-width:0}
+.pb-title{font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pb-sub{font-size:10px;color:var(--text2);margin-top:1px}
+.pb-progress{width:100%;height:4px;background:var(--bg);border-radius:2px;margin-top:3px;overflow:hidden;cursor:pointer}
+.pb-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transition:width .3s;width:0}
+.pb-time{font-size:10px;color:var(--text2);min-width:40px;text-align:right;flex-shrink:0}
+
+/* Glossary */
+.glossary-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.glossary-item:last-child{border:none}
+.glossary-term{font-weight:600;font-size:13px;color:var(--accent);min-width:100px;flex-shrink:0}
+.glossary-def{font-size:12.5px;line-height:1.7;color:var(--text)}
+
+/* Flow chart */
+.flow-container{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:200px;overflow-x:auto}
+
+/* Scenario */
+.scenario-input{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.scenario-chip{padding:6px 14px;border-radius:18px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:inherit;font-size:12px;cursor:pointer;transition:.2s}
+.scenario-chip:hover{border-color:var(--accent);color:var(--text)}
+.scenario-chip.active{border-color:var(--accent);background:var(--accent-glow);color:var(--accent)}
+
+/* QA */
+.qa-panel{display:flex;flex-direction:column;height:440px}
+.qa-header{margin-bottom:10px}.qa-header h3{font-size:15px;margin-bottom:3px}.qa-header p{font-size:11px;color:var(--text2)}
+.qa-messages{flex:1;overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;gap:7px}
+.qa-messages::-webkit-scrollbar{width:4px}.qa-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.qa-empty{text-align:center;padding:32px 0;color:var(--text2)}
+.qa-examples{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-top:12px}
+.qa-examples button{padding:5px 11px;border-radius:18px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:inherit;font-size:11px;cursor:pointer;transition:.2s}
+.qa-examples button:hover{border-color:var(--accent);color:var(--text)}
+.qa-msg{display:flex}.qa-msg.user{justify-content:flex-end}
+.qa-msg-bubble{max-width:80%;padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.7;white-space:pre-wrap}
+.qa-msg.user .qa-msg-bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-bottom-right-radius:4px}
+.qa-msg.assistant .qa-msg-bubble{background:var(--bg3);color:var(--text);border-bottom-left-radius:4px}
+.qa-input-row{display:flex;gap:6px;margin-top:8px}
+.qa-input-row input{flex:1;padding:9px 13px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-family:inherit;font-size:12px;outline:none}
+.qa-input-row input:focus{border-color:var(--accent)}
+.qa-input-row input::placeholder{color:var(--text2)}
+.qa-input-row button{padding:9px 16px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.qa-input-row button:disabled{opacity:.4;cursor:not-allowed}
+
+/* Raw text */
+.raw-text{font-size:12px;line-height:1.8;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-height:600px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px}
+
+/* Settings */
+.settings-group{margin-bottom:18px}
+.settings-group>label{display:block;font-size:12px;font-weight:600;margin-bottom:4px}
+.settings-hint{font-size:10px;color:var(--text2);margin-bottom:6px}
+.settings-input{width:100%;padding:8px 11px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-family:inherit;font-size:12px;outline:none}
+.settings-input:focus{border-color:var(--accent)}
+.key-input-row{display:flex;gap:6px}.key-input-row .settings-input{flex:1}
+.key-status{margin-top:5px;font-size:10px;padding:4px 8px;border-radius:5px;background:rgba(94,196,144,.1);color:var(--green)}
+.api-keys-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.voice-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:5px}
+.voice-chip{padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;transition:.2s;text-align:center;font-family:inherit}
+.voice-chip:hover{border-color:var(--accent)}.voice-chip.active{border-color:var(--accent);background:var(--accent-glow)}
+.voice-name{display:block;font-size:12px;font-weight:600;color:var(--text)}
+.voice-desc{display:block;font-size:9px;color:var(--text2);margin-top:1px}
+.speed-row{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;color:var(--text2)}
+.speed-row input[type="range"]{flex:1;accent-color:var(--accent)}
+/* TTS engine selector */
+.engine-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px}
+.engine-chip{padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;transition:.2s;font-family:inherit}
+.engine-chip:hover{border-color:var(--accent)}.engine-chip.active{border-color:var(--accent);background:var(--accent-glow)}
+.engine-name{font-size:12px;font-weight:600;color:var(--text)}
+.engine-desc{font-size:10px;color:var(--text2);margin-top:2px}
+.engine-tag{display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
+.tag-free{background:rgba(94,196,144,.15);color:var(--green)}
+.tag-quality{background:rgba(240,160,80,.15);color:var(--accent)}
+
+@media(max-width:640px){
+  .header{padding:10px 12px}.header h1{font-size:15px}
+  .main-area{padding:0 8px 90px}.content-area{padding:12px}
+  .tab-btn{font-size:11px;padding:8px 8px}
+  .file-badge{display:none}.voice-grid{grid-template-columns:1fr 1fr}
+  .api-keys-row{grid-template-columns:1fr}.engine-grid{grid-template-columns:1fr}
+  .fulltext{padding-left:22px}.para::before{left:-20px;font-size:11px}
+  /* Larger touch targets on mobile */
+  .para{padding:10px;min-height:44px}
+  .pb-main{width:48px;height:48px;font-size:22px}
+  .pb-skip{width:34px;height:34px;font-size:11px}
+  .pb-btn{width:38px;height:38px}
+  .sec-nav-btn{padding:6px 10px;font-size:11px}
+}
+/* iOS-specific */
+button,input{-webkit-tap-highlight-color:transparent}
+input{-webkit-appearance:none;border-radius:9px}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-icon">📖</div>
+  <div><h1>ルールブック・コンパニオン</h1><div class="header-sub">朗読 ・ AI要約 ・ 用語集 ・ フロー図 ・ シナリオ ・ Q&A</div></div>
+  <div class="header-right">
+    <div id="fileBadge" class="file-badge hidden"><span class="dot"></span><span id="fileNameBadge"></span></div>
+    <button class="hdr-btn" onclick="resetApp()" id="resetBtn" style="display:none" title="別のPDF">🔄</button>
+  </div>
+</div>
+
+<!-- Upload -->
+<div id="uploadScreen">
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept=".pdf" hidden>
+    <div id="uploadContent"><div class="upload-icon">📖</div><p class="upload-main">ルールブックPDFをドロップ</p><p class="upload-sub">またはクリックしてファイルを選択</p></div>
+    <div id="uploadLoading" class="hidden"><div class="spinner"></div><p>PDFを読み込み中...</p></div>
+  </div>
+  <div id="setupHint" style="text-align:center;margin-top:-12px;margin-bottom:16px"><button class="btn" onclick="switchTab('settings')">⚙️ まずAPIキーを設定</button></div>
+</div>
+
+<!-- App -->
+<div id="appScreen" class="hidden">
+  <div class="main-area">
+    <div class="tabs" id="tabBar">
+      <button class="tab-btn active" data-tab="reader" onclick="switchTab('reader')">📖 朗読</button>
+      <button class="tab-btn" data-tab="summary" onclick="switchTab('summary')">📋 要約</button>
+      <button class="tab-btn" data-tab="glossary" onclick="switchTab('glossary')">📖 用語集</button>
+      <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')">🔄 フロー</button>
+      <button class="tab-btn" data-tab="scenario" onclick="switchTab('scenario')">🎲 シナリオ</button>
+      <button class="tab-btn" data-tab="qa" onclick="switchTab('qa')">💬 Q&A</button>
+      <button class="tab-btn" data-tab="raw" onclick="switchTab('raw')">📄 原文</button>
+      <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">⚙️ 設定</button>
+    </div>
+    <div class="content-area">
+      <div id="ttsError" class="tts-error hidden"><span id="ttsErrorMsg"></span><button onclick="$('ttsError').classList.add('hidden')">✕</button></div>
+
+      <!-- READER -->
+      <div id="tab-reader">
+        <div class="reader-controls">
+          <button class="btn primary" id="playAllBtn" onclick="togglePlay()">▶ 最初から再生</button>
+          <button class="btn" id="tocBtn" onclick="detectSections()">📑 セクション区切り</button>
+          <button class="btn hidden" id="translateBtn" onclick="translateAll()">🌐 翻訳</button>
+          <span class="spacer"></span>
+          <span id="statusText" style="font-size:11px;color:var(--text2)"></span>
+        </div>
+        <div class="reader-hint">💡 段落クリック → 朗読開始。再生中に別の段落クリック → ジャンプ</div>
+        <div id="secNav" class="sec-nav hidden"></div>
+        <div id="fulltext" class="fulltext"></div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div id="tab-summary" class="hidden">
+        <div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn primary" id="analyzeAllBtn" onclick="analyzeAll()">✨ 全セクション解析</button></div>
+        <div id="sectionsContainer"></div>
+      </div>
+
+      <!-- GLOSSARY -->
+      <div id="tab-glossary" class="hidden">
+        <div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn primary" id="glossaryBtn" onclick="generateGlossary()">📖 用語を抽出</button></div>
+        <div id="glossaryContent"><div class="placeholder">「用語を抽出」を押すと、ルールブック内の専門用語をAIが自動抽出・解説します</div></div>
+      </div>
+
+      <!-- FLOW -->
+      <div id="tab-flow" class="hidden">
+        <div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn primary" id="flowBtn" onclick="generateFlow()">🔄 フロー図を生成</button></div>
+        <div id="flowContent"><div class="placeholder">「フロー図を生成」を押すと、ターンの流れをフローチャートで可視化します</div></div>
+      </div>
+
+      <!-- SCENARIO -->
+      <div id="tab-scenario" class="hidden">
+        <div style="margin-bottom:10px"><p style="font-size:13px;font-weight:500;margin-bottom:8px">プレイ条件を選択:</p>
+          <div class="scenario-input" id="scenarioPlayers">
+            <button class="scenario-chip active" onclick="selectChip(this,'scenarioPlayers')">2人</button>
+            <button class="scenario-chip" onclick="selectChip(this,'scenarioPlayers')">3人</button>
+            <button class="scenario-chip" onclick="selectChip(this,'scenarioPlayers')">4人</button>
+            <button class="scenario-chip" onclick="selectChip(this,'scenarioPlayers')">5人以上</button>
+          </div>
+          <div class="scenario-input" id="scenarioLevel">
+            <button class="scenario-chip active" onclick="selectChip(this,'scenarioLevel')">初プレイ</button>
+            <button class="scenario-chip" onclick="selectChip(this,'scenarioLevel')">2回目</button>
+            <button class="scenario-chip" onclick="selectChip(this,'scenarioLevel')">経験者</button>
+          </div>
+          <button class="btn primary" id="scenarioBtn" onclick="generateScenario()">🎲 シナリオ生成</button>
+        </div>
+        <div id="scenarioContent"><div class="placeholder">条件を選んで「シナリオ生成」を押すと、セットアップ例や推奨戦略をAIが提案します</div></div>
+      </div>
+
+      <!-- QA -->
+      <div id="tab-qa" class="hidden">
+        <div class="qa-panel">
+          <div class="qa-header"><h3>💬 ルールQ&A</h3><p>プレイ中の疑問をAIに質問</p></div>
+          <div class="qa-messages" id="qaMessages">
+            <div class="qa-empty" id="qaEmpty"><p>ルールについて何でも聞いてください</p>
+              <div class="qa-examples">
+                <button onclick="$('qaInput').value='ターンの最初に何をする？'">ターンの最初に何をする？</button>
+                <button onclick="$('qaInput').value='勝利条件を教えて'">勝利条件を教えて</button>
+                <button onclick="$('qaInput').value='このゲームでよくあるミスは？'">よくあるミスは？</button>
+              </div>
+            </div>
+          </div>
+          <div class="qa-input-row"><input id="qaInput" placeholder="ルールについて質問..." onkeydown="if(event.key==='Enter')askQA()"><button id="qaSubmit" onclick="askQA()">送信</button></div>
+        </div>
+      </div>
+
+      <!-- RAW TEXT -->
+      <div id="tab-raw" class="hidden">
+        <div class="raw-text" id="rawText"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div id="tab-settings" class="hidden">
+        <h3 style="font-size:15px;margin-bottom:14px">⚙️ 設定</h3>
+        <div class="api-keys-row">
+          <div class="settings-group">
+            <label>OpenAI APIキー</label><p class="settings-hint">OpenAI TTS音声に必要</p>
+            <div class="key-input-row"><input type="password" id="openaiKeyInput" placeholder="sk-..." class="settings-input"><button class="icon-btn" onclick="toggleVis('openaiKeyInput',this)">👁</button></div>
+            <button class="btn primary" style="margin-top:5px;width:100%" onclick="saveKey('openai')">保存</button>
+            <div id="openaiKeyStatus" class="key-status hidden">✓ 設定済み</div>
+          </div>
+          <div class="settings-group">
+            <label>Anthropic APIキー</label><p class="settings-hint">AI要約・Q&A・用語集等に必要</p>
+            <div class="key-input-row"><input type="password" id="claudeKeyInput" placeholder="sk-ant-..." class="settings-input"><button class="icon-btn" onclick="toggleVis('claudeKeyInput',this)">👁</button></div>
+            <button class="btn primary" style="margin-top:5px;width:100%" onclick="saveKey('claude')">保存</button>
+            <div id="claudeKeyStatus" class="key-status hidden">✓ 設定済み</div>
+          </div>
+        </div>
+        <div class="settings-group">
+          <label>音声エンジン</label>
+          <div class="engine-grid" id="engineGrid"></div>
+        </div>
+        <div id="openaiVoiceSettings">
+          <div class="settings-group">
+            <label>OpenAI 音声</label>
+            <div class="voice-grid" id="voiceGrid"></div>
+          </div>
+        </div>
+        <div class="settings-group">
+          <label>速度: <span id="speedLabel">1.00x</span></label>
+          <div class="speed-row"><span>🐢</span><input type="range" min="0.5" max="2.0" step="0.05" value="1.0" id="speedSlider" oninput="S.ttsSpeed=+this.value;$('speedLabel').textContent=S.ttsSpeed.toFixed(2)+'x';localStorage.setItem('ttsSpeed',S.ttsSpeed)"><span>🐇</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Playback Bar -->
+<div class="playback-bar hidden" id="playbackBar">
+  <div class="playback-inner">
+    <div class="pb-controls">
+      <button class="pb-skip" onclick="skipTime(-10)">-10</button>
+      <button class="pb-btn pb-main" id="pbPlayBtn" onclick="togglePlay()">▶</button>
+      <button class="pb-skip" onclick="skipTime(10)">+10</button>
+    </div>
+    <div class="pb-info">
+      <div class="pb-title" id="pbTitle">段落をクリックして再生</div>
+      <div class="pb-sub" id="pbSub"></div>
+      <div class="pb-progress" onclick="seekAudio(event)"><div class="pb-progress-fill" id="pbFill"></div></div>
+    </div>
+    <div class="pb-time" id="pbTime"></div>
+    <button class="pb-btn" onclick="stopAndReset()" title="停止" style="font-size:12px">⏹</button>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $=id=>document.getElementById(id);
+const TABS=['reader','summary','glossary','flow','scenario','qa','raw','settings'];
+
+const S={
+  ruleText:null,pages:[],paras:[],currentPara:-1,
+  isPlaying:false,isGenerating:false,
+  sections:{},markers:[],tocParas:new Set(),sectionStarts:[],
+  openaiKey:localStorage.getItem('openaiKey')||'',
+  claudeKey:localStorage.getItem('claudeKey')||'',
+  ttsEngine:localStorage.getItem('ttsEngine')||'openai',
+  ttsVoice:localStorage.getItem('ttsVoice')||'nova',
+  ttsSpeed:+(localStorage.getItem('ttsSpeed')||'1.0'),
+  ttsAbort:null,currentAudio:null,timeUpdater:null,
+  browserVoice:null,
+};
+
+const VOICES=[{id:'nova',name:'Nova',desc:'明るい'},{id:'shimmer',name:'Shimmer',desc:'柔らか'},{id:'alloy',name:'Alloy',desc:'中性的'},{id:'onyx',name:'Onyx',desc:'低音'},{id:'fable',name:'Fable',desc:'物語調'},{id:'echo',name:'Echo',desc:'クリア'}];
+const ENGINES=[{id:'openai',name:'OpenAI TTS',desc:'高品質な音声合成。APIキー必要',tag:'高品質',tagCls:'tag-quality'},{id:'browser',name:'ブラウザ内蔵',desc:'追加設定不要。音質はOS依存',tag:'無料',tagCls:'tag-free'}];
+const SUMM=[{key:'objective',label:'🎯 ゲームの目的',prompt:'ゲームの目的を1〜2文で'},{key:'winCondition',label:'🏆 勝利条件',prompt:'勝利条件を明確に'},{key:'setup',label:'📦 セットアップ',prompt:'ゲーム開始前の準備手順'},{key:'turnFlow',label:'🔄 ターンの流れ',prompt:'各ターンで行うことをステップバイステップで'},{key:'actions',label:'⚡ アクション一覧',prompt:'プレイヤーが取れるアクションの一覧と説明'},{key:'specialRules',label:'⚠️ 特殊ルール',prompt:'特殊ルールや例外処理'},{key:'tips',label:'💡 注意点',prompt:'初心者が間違えやすいポイントや注意点'}];
+
+function init(){
+  buildEngineGrid();buildVoiceGrid();setupUpload();updateKeyUI();buildSummSections();
+  $('speedSlider').value=S.ttsSpeed;$('speedLabel').textContent=S.ttsSpeed.toFixed(2)+'x';
+  $('openaiKeyInput').value=S.openaiKey;$('claudeKeyInput').value=S.claudeKey;
+  // Preload browser voices
+  if(window.speechSynthesis){speechSynthesis.onvoiceschanged=()=>{const v=speechSynthesis.getVoices();S.browserVoice=v.find(x=>x.lang.startsWith('ja'))||v.find(x=>x.lang.startsWith('en'))||v[0]}}
+}
+
+// === Tab switching ===
+function switchTab(t){
+  TABS.forEach(x=>{const el=$('tab-'+x);if(el)el.classList.toggle('hidden',x!==t);document.querySelectorAll(`[data-tab="${x}"]`).forEach(b=>b.classList.toggle('active',x===t))});
+  // Show settings tab even before PDF loaded
+  if(t==='settings'&&$('appScreen').classList.contains('hidden')){$('appScreen').classList.remove('hidden');$('uploadScreen').classList.add('hidden')}
+}
+
+// === Settings ===
+function toggleVis(id,btn){const i=$(id);if(i.type==='password'){i.type='text';btn.textContent='🙈'}else{i.type='password';btn.textContent='👁'}}
+function saveKey(w){if(w==='openai'){S.openaiKey=$('openaiKeyInput').value.trim();localStorage.setItem('openaiKey',S.openaiKey)}else{S.claudeKey=$('claudeKeyInput').value.trim();localStorage.setItem('claudeKey',S.claudeKey)};updateKeyUI()}
+function updateKeyUI(){$('openaiKeyStatus').classList.toggle('hidden',!S.openaiKey);$('claudeKeyStatus').classList.toggle('hidden',!S.claudeKey);$('setupHint')&&$('setupHint').classList.toggle('hidden',!!S.claudeKey)}
+function buildEngineGrid(){
+  const g=$('engineGrid');g.innerHTML='';
+  ENGINES.forEach(e=>{const b=document.createElement('button');b.className='engine-chip'+(S.ttsEngine===e.id?' active':'');b.innerHTML=`<div><span class="engine-name">${e.name}</span><span class="engine-tag ${e.tagCls}">${e.tag}</span></div><div class="engine-desc">${e.desc}</div>`;
+    b.onclick=()=>{S.ttsEngine=e.id;localStorage.setItem('ttsEngine',e.id);g.querySelectorAll('.engine-chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');$('openaiVoiceSettings').classList.toggle('hidden',e.id!=='openai')};g.appendChild(b)});
+  $('openaiVoiceSettings').classList.toggle('hidden',S.ttsEngine!=='openai');
+}
+function buildVoiceGrid(){const g=$('voiceGrid');g.innerHTML='';VOICES.forEach(v=>{const b=document.createElement('button');b.className='voice-chip'+(S.ttsVoice===v.id?' active':'');b.innerHTML=`<span class="voice-name">${v.name}</span><span class="voice-desc">${v.desc}</span>`;b.onclick=()=>{S.ttsVoice=v.id;localStorage.setItem('ttsVoice',v.id);g.querySelectorAll('.voice-chip').forEach(c=>c.classList.remove('active'));b.classList.add('active')};g.appendChild(b)})}
+
+// === Upload ===
+function setupUpload(){const z=$('uploadZone'),f=$('fileInput');z.onclick=()=>f.click();f.onchange=()=>{if(f.files[0])loadPDF(f.files[0])};z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};z.ondragleave=()=>z.classList.remove('drag-over');z.ondrop=e=>{e.preventDefault();z.classList.remove('drag-over');if(e.dataTransfer.files[0])loadPDF(e.dataTransfer.files[0])}}
+async function loadPDF(file){
+  $('uploadContent').classList.add('hidden');$('uploadLoading').classList.remove('hidden');
+  try{
+    const ab=await file.arrayBuffer(),pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    S.pages=[];let allText='';
+    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const content=await pg.getTextContent();let pt='',lastY=null,lastX=null,lastW=0;for(const item of content.items){if(!item.str)continue;const y=Math.round(item.transform[5]),x=item.transform[4];if(lastY!==null&&Math.abs(y-lastY)>5)pt+='\n';else if(lastX!==null&&x-(lastX+lastW)>3)pt+=' ';pt+=item.str;lastY=y;lastX=x;lastW=item.width||item.str.length*5};S.pages.push(pt.trim());allText+=pt+'\n\n'}
+    S.ruleText=allText;S.sections={};S.currentPara=-1;S.markers=[];S.tocParas=new Set();S.sectionStarts=[];
+    $('fileNameBadge').textContent=file.name;$('fileBadge').classList.remove('hidden');$('resetBtn').style.display='';
+    $('rawText').textContent=allText;
+    buildFullText();
+    $('uploadScreen').classList.add('hidden');$('appScreen').classList.remove('hidden');switchTab('reader');
+  }catch(e){alert('PDF読み込みエラー: '+e.message)}
+  $('uploadContent').classList.remove('hidden');$('uploadLoading').classList.add('hidden');
+}
+function resetApp(){stopAudio();S.ruleText=null;S.pages=[];S.paras=[];S.sections={};S.currentPara=-1;$('fileBadge').classList.add('hidden');$('resetBtn').style.display='none';$('playbackBar').classList.add('hidden');$('appScreen').classList.add('hidden');$('uploadScreen').classList.remove('hidden');$('fileInput').value='';switchTab('reader')}
+
+// === Build Full Text (page-based) ===
+function buildFullText(){
+  S.paras=[];const container=$('fulltext');container.innerHTML='';const nav=$('secNav');nav.innerHTML='';nav.classList.remove('hidden');
+  S.pages.forEach((pageText,pi)=>{
+    const navBtn=document.createElement('button');navBtn.className='sec-nav-btn';navBtn.textContent=`P${pi+1}`;navBtn.onclick=()=>{$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'})};nav.appendChild(navBtn);
+    const divider=document.createElement('div');divider.className='page-divider';divider.id='page-div-'+pi;divider.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${pi+1}</span><div class="page-divider-line"></div>`;container.appendChild(divider);
+    const rawP=pageText.split(/\n\s*\n+|(?<=[.。！？])\s{2,}/).map(p=>p.trim()).filter(p=>p.length>3);
+    const grouped=[];let buf='';
+    for(const p of rawP){if(buf&&buf.length<60&&buf.length+p.length<300){buf+='\n'+p}else{if(buf)grouped.push(buf);buf=p}};if(buf)grouped.push(buf);
+    if(!grouped.length&&pageText.trim().length>3)grouped.push(pageText.trim());
+    grouped.forEach(text=>{const idx=S.paras.length;const pObj={text,translated:null,el:null,isToc:false,page:pi};S.paras.push(pObj);const el=document.createElement('div');el.className='para';el.id='p-'+idx;el.textContent=text;el.onclick=()=>jumpTo(idx);container.appendChild(el);pObj.el=el});
+  });
+  $('playbackBar').classList.remove('hidden');$('translateBtn').classList.remove('hidden');$('statusText').textContent=`${S.pages.length}P / ${S.paras.length}段落`;updateBar();
+}
+
+// === Section Detection ===
+async function detectSections(){
+  if(!S.claudeKey){switchTab('settings');return}
+  $('tocBtn').disabled=true;$('tocBtn').textContent='⏳ 解析中...';$('statusText').textContent='解析中...';
+  try{
+    const paraList=S.paras.map((p,i)=>`[${i}] ${p.text.slice(0,120).replace(/\n/g,' ')}`);
+    const allMarkers=[];const CHUNK=150;const totalChunks=Math.ceil(paraList.length/CHUNK);
+    for(let c=0;c<totalChunks;c++){
+      const chunk=paraList.slice(c*CHUNK,Math.min((c+1)*CHUNK,paraList.length)).join('\n');
+      $('statusText').textContent=`解析中 (${c+1}/${totalChunks})`;
+      const result=await callClaude(`段落リストからセクション見出しと目次を判定。JSON形式のみ:\n{"toc":[段落番号],"sections":[{"para":番号,"title":"名"}]}`,chunk);
+      if(result){try{const j=result.match(/\{[\s\S]*\}/);const d=j?JSON.parse(j[0]):{};if(Array.isArray(d.toc))d.toc.forEach(i=>{if(typeof i==='number'&&i>=0&&i<S.paras.length)allMarkers.push({paraIdx:i,type:'toc'})});if(Array.isArray(d.sections))d.sections.forEach(s=>{if(typeof s.para==='number'&&s.title)allMarkers.push({paraIdx:s.para,type:'section',title:String(s.title).trim()})})}catch(e){}}
+      if(c<totalChunks-1)await new Promise(r=>setTimeout(r,1500));
+    }
+    S.tocParas=new Set(allMarkers.filter(m=>m.type==='toc').map(m=>m.paraIdx));
+    S.sectionStarts=allMarkers.filter(m=>m.type==='section').sort((a,b)=>a.paraIdx-b.paraIdx);
+    renderWithSections();$('statusText').textContent=`✓ ${S.sectionStarts.length}セクション`;
+  }catch(e){showError('解析エラー: '+e.message);$('statusText').textContent=''}
+  $('tocBtn').disabled=false;$('tocBtn').textContent='📑 セクション区切り';
+}
+function renderWithSections(){
+  const container=$('fulltext');container.innerHTML='';const secMap=new Map();S.sectionStarts?.forEach(s=>secMap.set(s.paraIdx,s.title));let lastPage=-1;
+  S.paras.forEach((p,i)=>{const isToc=S.tocParas?.has(i);if(p.page!==lastPage){lastPage=p.page;const d=document.createElement('div');d.className='page-divider';d.id='page-div-'+p.page;d.innerHTML=`<div class="page-divider-line"></div><span class="page-divider-label">Page ${p.page+1}</span><div class="page-divider-line"></div>`;container.appendChild(d)}
+    if(isToc&&(i===0||!S.tocParas?.has(i-1))){const l=document.createElement('div');l.className='toc-label';l.innerHTML='📑 目次エリア <button onclick="skipToContent()">▶ 本文へ</button>';container.appendChild(l)}
+    if(secMap.has(i)){const d=document.createElement('div');d.className='sec-divider';d.id='sec-div-'+i;d.innerHTML=`<div class="sec-divider-line right"></div><span class="sec-divider-label">${esc(secMap.get(i))}</span><div class="sec-divider-line"></div>`;container.appendChild(d)}
+    const el=document.createElement('div');el.className='para'+(isToc?' toc-para':'');el.id='p-'+i;el.textContent=p.translated||p.text;el.onclick=()=>jumpTo(i);container.appendChild(el);p.el=el;p.isToc=isToc});
+  buildSecNav();
+}
+function buildSecNav(){const nav=$('secNav');nav.innerHTML='';nav.classList.remove('hidden');S.pages.forEach((pt,pi)=>{const b=document.createElement('button');b.className='sec-nav-btn';b.textContent=`P${pi+1}`;b.onclick=()=>$('page-div-'+pi)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)});if(S.sectionStarts?.length){const sep=document.createElement('span');sep.style.cssText='width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 3px';nav.appendChild(sep);S.sectionStarts.forEach(s=>{const b=document.createElement('button');b.className='sec-nav-btn';b.style.borderColor='rgba(240,160,80,.3)';b.textContent=s.title;b.onclick=()=>$('sec-div-'+s.paraIdx)?.scrollIntoView({behavior:'smooth',block:'start'});nav.appendChild(b)})}}
+function skipToContent(){const i=S.paras.findIndex(p=>!p.isToc);if(i>=0)S.paras[i].el.scrollIntoView({behavior:'smooth',block:'start'})}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+// === Highlights ===
+function updateHighlights(){const cur=S.currentPara;S.paras.forEach((p,i)=>{let cls='para';if(p.isToc)cls+=' toc-para';if(cur>=0){if(i<cur)cls+=' done';else if(i===cur){if(S.isGenerating)cls+=' generating';else if(S.isPlaying)cls+=' playing'}};p.el.className=cls})}
+
+// === Playback ===
+// iOS Safari requires user-gesture to unlock audio. We create a shared Audio element
+// on first user click and reuse it, so auto-advance to next paragraph works.
+let _iosAudioUnlocked=false;
+let _sharedAudio=null;
+
+function unlockAudio(){
+  if(_iosAudioUnlocked)return;
+  _iosAudioUnlocked=true;
+  // Create a tiny silent audio context to unlock playback
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const buf=ctx.createBuffer(1,1,22050);
+    const src=ctx.createBufferSource();
+    src.buffer=buf;src.connect(ctx.destination);src.start(0);
+    ctx.resume();
+  }catch(e){}
+  // Also pre-create shared Audio element
+  _sharedAudio=new Audio();
+  _sharedAudio.volume=1;
+  document.removeEventListener('touchstart',unlockAudio);
+  document.removeEventListener('click',unlockAudio);
+}
+document.addEventListener('touchstart',unlockAudio,{once:true});
+document.addEventListener('click',unlockAudio,{once:true});
+
+function stopAudio(){if(S.ttsAbort){S.ttsAbort.abort();S.ttsAbort=null};if(S.currentAudio){if(S.timeUpdater)S.currentAudio.removeEventListener('timeupdate',S.timeUpdater);S.currentAudio.pause();S.currentAudio.src='';S.currentAudio=null};if(window.speechSynthesis)speechSynthesis.cancel();S.isPlaying=false;S.isGenerating=false}
+function stopAndReset(){stopAudio();S.currentPara=-1;updateHighlights();updateBar()}
+function jumpTo(idx){stopAudio();playFrom(idx)}
+function togglePlay(){if(S.isPlaying||S.isGenerating){stopAudio();updateBar();updateHighlights();return};playFrom(S.currentPara>=0?S.currentPara:0)}
+
+async function playFrom(startIdx){
+  const useOpenAI=S.ttsEngine==='openai';
+  if(useOpenAI&&!S.openaiKey){switchTab('settings');showError('OpenAI APIキーが必要です');return}
+  const controller=new AbortController();S.ttsAbort=controller;
+  for(let i=startIdx;i<S.paras.length;i++){
+    if(controller.signal.aborted)return;
+    if(S.paras[i].isToc&&i!==startIdx)continue;
+    S.currentPara=i;S.isGenerating=true;S.isPlaying=false;updateHighlights();updateBar();
+    S.paras[i].el.scrollIntoView({behavior:'smooth',block:'center'});
+    const text=S.paras[i].translated||S.paras[i].text;
+    if(useOpenAI){
+      const chunks=splitTTS(text);if(!chunks.length){S.isGenerating=false;continue}
+      try{for(let ci=0;ci<chunks.length;ci++){if(controller.signal.aborted)return;$('pbSub').textContent=chunks.length>1?`生成中 (${ci+1}/${chunks.length})`:'生成中...';const url=await fetchTTS(chunks[ci]);if(controller.signal.aborted){URL.revokeObjectURL(url);return};S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent=chunks.length>1?`再生中 ${ci+1}/${chunks.length}`:'再生中';await playAudioUrl(url,controller,ci,chunks.length)}}catch(e){if(!controller.signal.aborted){showError(e.message);S.isPlaying=false;S.isGenerating=false;updateBar();return}}
+    }else{
+      // Browser TTS
+      S.isGenerating=false;S.isPlaying=true;updateHighlights();updateBar();$('pbSub').textContent='再生中';
+      try{await playBrowserTTS(cleanForTTS(text),controller)}catch(e){if(!controller.signal.aborted){S.isPlaying=false;updateBar();return}}
+    }
+    S.isGenerating=false;
+  }
+  if(!controller.signal.aborted){S.isPlaying=false;S.isGenerating=false;$('pbTitle').textContent='✓ 朗読完了';$('pbSub').textContent='';$('pbTime').textContent='';$('pbFill').style.width='100%';updateBar()}
+}
+
+function playAudioUrl(url,controller,ci,total){
+  return new Promise((resolve,reject)=>{
+    // Reuse shared audio on iOS to avoid autoplay restrictions
+    const a=_sharedAudio||new Audio();
+    _sharedAudio=null; // use once, then create new ones
+    a.src=url;
+    S.currentAudio=a;
+    S.timeUpdater=()=>{if(a.duration&&isFinite(a.duration)){$('pbFill').style.width=Math.round((ci+a.currentTime/a.duration)/total*100)+'%';$('pbTime').textContent=fmtTime(Math.floor(a.currentTime))+'/'+fmtTime(Math.floor(a.duration))}};
+    a.addEventListener('timeupdate',S.timeUpdater);
+    a.onended=()=>{a.removeEventListener('timeupdate',S.timeUpdater);URL.revokeObjectURL(url);resolve()};
+    a.onerror=e=>{a.removeEventListener('timeupdate',S.timeUpdater);URL.revokeObjectURL(url);reject(e)};
+    controller.signal.addEventListener('abort',()=>{a.removeEventListener('timeupdate',S.timeUpdater);a.pause();a.src='';URL.revokeObjectURL(url);resolve()},{once:true});
+    a.play().catch(e=>{
+      // iOS might still block - show user-friendly message
+      if(e.name==='NotAllowedError'){
+        showError('音声再生がブロックされました。画面をタップしてからもう一度お試しください');
+        resolve();
+      }else reject(e);
+    });
+  })
+}
+function playBrowserTTS(text,controller){
+  return new Promise((resolve,reject)=>{if(!window.speechSynthesis){reject(new Error('ブラウザTTS非対応'));return};const u=new SpeechSynthesisUtterance(text);u.rate=S.ttsSpeed;u.lang='ja-JP';if(S.browserVoice)u.voice=S.browserVoice;u.onend=resolve;u.onerror=e=>{if(e.error!=='canceled')reject(e);else resolve()};controller.signal.addEventListener('abort',()=>{speechSynthesis.cancel();resolve()},{once:true});speechSynthesis.speak(u)})}
+
+function fmtTime(s){return Math.floor(s/60)+':'+(''+(s%60)).padStart(2,'0')}
+function skipTime(d){if(S.currentAudio&&S.isPlaying)S.currentAudio.currentTime=Math.max(0,Math.min(S.currentAudio.currentTime+d,S.currentAudio.duration||0))}
+function seekAudio(e){if(S.currentAudio&&S.isPlaying&&S.currentAudio.duration){const r=e.currentTarget.getBoundingClientRect();S.currentAudio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*S.currentAudio.duration}}
+function updateBar(){const playing=S.isPlaying||S.isGenerating;$('pbPlayBtn').textContent=playing?'⏸':'▶';$('playAllBtn').textContent=playing?'⏸ 一時停止':'▶ '+(S.currentPara>0?'続きから':'最初から再生');if(S.currentPara>=0&&S.currentPara<S.paras.length){const p=S.paras[S.currentPara];$('pbTitle').textContent=`P${(p.page||0)+1} (${S.currentPara+1}/${S.paras.length}): ${(p.translated||p.text).slice(0,50).replace(/\n/g,' ')}…`}else if(!playing){$('pbTitle').textContent='段落をクリックして再生';$('pbSub').textContent='';$('pbTime').textContent=''}}
+function showError(m){$('ttsErrorMsg').textContent='⚠️ '+m;$('ttsError').classList.remove('hidden')}
+
+// === TTS ===
+function cleanForTTS(t){let s=t;s=s.replace(/([a-z])([A-Z])/g,'$1 $2');s=s.replace(/\.{3,}/g,'').replace(/…+/g,'').replace(/[─━═＝]{2,}/g,'').replace(/[★☆●○◆◇■□▲△▼▽♦♣♠♥※＊]+/g,'').replace(/[_~`|]{2,}/g,'').replace(/#{1,}\s*/g,'').replace(/\b[Pp]age\s*\d+\b/gi,'').replace(/-\s*\d+\s*-/g,'').replace(/^\d+\s*$/gm,'').replace(/^[・\-\*•◦▸►]\s*/gm,'').replace(/https?:\/\/\S+/g,'').replace(/[©®™]/g,'').replace(/\([^)]*\.(png|jpg|svg|gif)\)/gi,'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').replace(/^\s+$/gm,'').trim();return s}
+function splitTTS(t,max=4000){const c=cleanForTTS(t);if(!c)return[];if(c.length<=max)return[c];const chunks=[];let r=c;while(r.length>0){if(r.length<=max){chunks.push(r);break};let sp=-1;for(const sep of['。','！','？','.\n','! ','? ','. ']){const i=r.lastIndexOf(sep,max);if(i>max*.3){sp=i+sep.length;break}};if(sp<0){const i=r.lastIndexOf('\n',max);if(i>max*.3)sp=i+1};if(sp<0){for(const sep of['、',', ','; ']){const i=r.lastIndexOf(sep,max);if(i>max*.4){sp=i+sep.length;break}}};if(sp<0)sp=max;chunks.push(r.slice(0,sp).trim());r=r.slice(sp).trim()};return chunks.filter(c=>c.length>0)}
+async function fetchTTS(text){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),30000);try{const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+S.openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'tts-1-hd',input:text,voice:S.ttsVoice,speed:S.ttsSpeed,response_format:'mp3'}),signal:ac.signal});clearTimeout(t);if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'TTS error')};const blob=await res.blob();if(blob.size<100)throw new Error('空の音声');return URL.createObjectURL(blob)}catch(e){clearTimeout(t);if(e.name==='AbortError')throw new Error('タイムアウト');throw e}}
+
+// === Translate ===
+async function translateAll(){if(!S.claudeKey){switchTab('settings');return};$('translateBtn').disabled=true;$('translateBtn').textContent='⏳ 翻訳中...';const t=S.paras.filter(p=>!p.translated);for(let i=0;i<t.length;i++){$('statusText').textContent=`翻訳中 ${i+1}/${t.length}`;try{const r=await callClaude('ボードゲームのルールテキストを自然な日本語に翻訳。翻訳のみ出力。',t[i].text.slice(0,5000));if(r){t[i].translated=r;t[i].el.textContent=r};await new Promise(r=>setTimeout(r,1500))}catch(e){showError('翻訳エラー: '+e.message);break}};$('translateBtn').disabled=false;$('translateBtn').textContent='🌐 翻訳';$('statusText').textContent=`${S.pages.length}P / ${S.paras.length}段落`}
+
+// === Claude API ===
+async function callClaude(sys,msg){if(!S.claudeKey){switchTab('settings');return null};const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':S.claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:3000,system:sys,messages:[{role:'user',content:msg}]})});if(!res.ok){const d=await res.json().catch(()=>({}));if(res.status===429){await new Promise(r=>setTimeout(r,15000));return callClaude(sys,msg)};throw new Error(d.error?.message||'API error: '+res.status)};const d=await res.json();if(d.error)throw new Error(d.error.message);return d.content?.[0]?.text||null}
+
+// === Summary ===
+function buildSummSections(){const c=$('sectionsContainer');c.innerHTML='';SUMM.forEach(s=>{c.innerHTML+=`<div class="card" id="sc-${s.key}"><div class="card-head"><h3>${s.label}</h3><div style="display:flex;gap:4px"><button class="icon-btn hidden" id="sp-${s.key}" onclick="speakSec('${s.key}')">🔊</button><button class="icon-btn" id="sa-${s.key}" onclick="analyzeSec('${s.key}')">✨</button></div></div><div class="card-body"><div class="placeholder" id="sph-${s.key}">✨ を押して解析</div><div class="hidden" id="sl-${s.key}" style="color:var(--blue);font-size:12px"><div class="dot-anim"><span></span><span></span><span></span></div> 解析中...</div><div class="hidden" id="st-${s.key}"></div></div></div>`})}
+async function analyzeSec(k){const s=SUMM.find(x=>x.key===k);$('sph-'+k).classList.add('hidden');$('sl-'+k).classList.remove('hidden');$('st-'+k).classList.add('hidden');$('sa-'+k).classList.add('hidden');try{const r=await callClaude(`ボードゲームルール解説の専門家。以下のルールブックから「${s.prompt}」を日本語で整理。具体的数値を省略せず、自然な文章で。英語なら翻訳。`,S.ruleText.slice(0,8000));if(r){S.sections[k]=r;$('st-'+k).textContent=r;$('st-'+k).classList.remove('hidden');$('sp-'+k).classList.remove('hidden');$('sc-'+k).classList.add('accent')}}catch(e){$('st-'+k).textContent='エラー: '+e.message;$('st-'+k).classList.remove('hidden');$('sa-'+k).classList.remove('hidden')};$('sl-'+k).classList.add('hidden')}
+async function analyzeAll(){$('analyzeAllBtn').disabled=true;for(const s of SUMM){if(!S.sections[s.key]){await analyzeSec(s.key);await new Promise(r=>setTimeout(r,1500))}};$('analyzeAllBtn').disabled=false}
+async function speakSec(k){if(S.sections[k])playDirect(S.sections[k])}
+async function playDirect(text){stopAudio();const ctrl=new AbortController();S.ttsAbort=ctrl;if(S.ttsEngine==='openai'&&S.openaiKey){const chunks=splitTTS(text);try{for(const ch of chunks){if(ctrl.signal.aborted)return;const url=await fetchTTS(ch);if(ctrl.signal.aborted){URL.revokeObjectURL(url);return};await playAudioUrl(url,ctrl,0,1)}}catch(e){if(!ctrl.signal.aborted)showError(e.message)}}else{try{await playBrowserTTS(cleanForTTS(text),ctrl)}catch(e){}}}
+
+// === Glossary ===
+async function generateGlossary(){
+  if(!S.claudeKey){switchTab('settings');return}
+  $('glossaryBtn').disabled=true;$('glossaryBtn').textContent='⏳ 抽出中...';$('glossaryContent').innerHTML='<div style="color:var(--blue);font-size:12px"><div class="dot-anim"><span></span><span></span><span></span></div> 用語を抽出中...</div>';
+  try{
+    const r=await callClaude(`ボードゲームルール専門家。以下のルールブックから専門用語・ゲーム固有用語を15〜25個抽出し、JSON配列で出力。各要素は{"term":"用語名","def":"簡潔な説明（1〜2文）"}。日本語で。英語の用語は原語も併記。JSONのみ出力。`,S.ruleText.slice(0,10000));
+    if(r){const m=r.match(/\[[\s\S]*\]/);const items=m?JSON.parse(m[0]):[];
+      $('glossaryContent').innerHTML=items.map(g=>`<div class="glossary-item"><div class="glossary-term">${esc(g.term)}</div><div class="glossary-def">${esc(g.def)}</div></div>`).join('')||'<div class="placeholder">用語が見つかりませんでした</div>'}
+  }catch(e){$('glossaryContent').innerHTML=`<div class="placeholder">エラー: ${esc(e.message)}</div>`}
+  $('glossaryBtn').disabled=false;$('glossaryBtn').textContent='📖 用語を抽出';
+}
+
+// === Flow Chart ===
+async function generateFlow(){
+  if(!S.claudeKey){switchTab('settings');return}
+  $('flowBtn').disabled=true;$('flowBtn').textContent='⏳ 生成中...';$('flowContent').innerHTML='<div style="color:var(--blue);font-size:12px"><div class="dot-anim"><span></span><span></span><span></span></div> フロー図を生成中...</div>';
+  try{
+    const r=await callClaude(`ボードゲームルール専門家。以下のルールブックからターンの流れをMermaid記法のフローチャートで作成。
+ルール:
+- graph TD形式
+- 日本語のノード名
+- ターン開始→各フェーズ→ターン終了の流れ
+- 分岐がある場合は条件分岐を使用
+- Mermaidコードのみ出力（\`\`\`は不要）`,S.ruleText.slice(0,8000));
+    if(r){
+      const mermaid=r.replace(/```mermaid|```/g,'').trim();
+      $('flowContent').innerHTML=`<div class="flow-container"><pre style="font-size:12px;line-height:1.6;color:var(--text)">${esc(mermaid)}</pre></div><p style="font-size:11px;color:var(--text2);margin-top:8px">💡 上のMermaidコードを <a href="https://mermaid.live" target="_blank" style="color:var(--accent)">mermaid.live</a> に貼り付けると図として表示できます</p>`}
+  }catch(e){$('flowContent').innerHTML=`<div class="placeholder">エラー: ${esc(e.message)}</div>`}
+  $('flowBtn').disabled=false;$('flowBtn').textContent='🔄 フロー図を生成';
+}
+
+// === Scenario ===
+function selectChip(btn,groupId){$(groupId).querySelectorAll('.scenario-chip').forEach(c=>c.classList.remove('active'));btn.classList.add('active')}
+async function generateScenario(){
+  if(!S.claudeKey){switchTab('settings');return}
+  const players=$('scenarioPlayers').querySelector('.active')?.textContent||'2人';
+  const level=$('scenarioLevel').querySelector('.active')?.textContent||'初プレイ';
+  $('scenarioBtn').disabled=true;$('scenarioBtn').textContent='⏳ 生成中...';$('scenarioContent').innerHTML='<div style="color:var(--blue);font-size:12px"><div class="dot-anim"><span></span><span></span><span></span></div> シナリオを生成中...</div>';
+  try{
+    const r=await callClaude(`ボードゲームルール専門家。以下のルールブックに基づき、「${players}・${level}」向けの具体的なプレイシナリオを日本語で作成。
+
+含める内容:
+1. 🎯 このゲームの概要（2文）
+2. 📦 セットアップ手順（この人数・レベル向けの具体的な配置）
+3. 🎮 最初の3ターンの推奨アクション
+4. 💡 この人数でのコツ・注意点
+5. ⏱ 想定プレイ時間
+
+自然な文章で。`,S.ruleText.slice(0,8000));
+    if(r)$('scenarioContent').innerHTML=`<div class="card accent"><div class="card-body">${esc(r)}</div></div>`;
+  }catch(e){$('scenarioContent').innerHTML=`<div class="placeholder">エラー: ${esc(e.message)}</div>`}
+  $('scenarioBtn').disabled=false;$('scenarioBtn').textContent='🎲 シナリオ生成';
+}
+
+// === QA ===
+async function askQA(){const inp=$('qaInput'),msg=inp.value.trim();if(!msg)return;inp.value='';$('qaEmpty')?.remove();appendMsg('user',msg);$('qaSubmit').disabled=true;inp.disabled=true;const lid='ql-'+Date.now();appendMsg('assistant','<div class="dot-anim"><span></span><span></span><span></span></div>',lid);try{const a=await callClaude(`ボードゲームルール専門家。以下のルールに基づき日本語で回答。記載がなければ「記載がありません」。\n\nルール:\n${S.ruleText.slice(0,6000)}`,msg);$(lid).querySelector('.qa-msg-bubble').textContent=a||'回答できませんでした'}catch(e){$(lid).querySelector('.qa-msg-bubble').textContent='エラー: '+e.message};$('qaSubmit').disabled=false;inp.disabled=false;inp.focus()}
+function appendMsg(r,h,id){const d=document.createElement('div');d.className='qa-msg '+r;if(id)d.id=id;d.innerHTML=`<div class="qa-msg-bubble">${h}</div>`;$('qaMessages').appendChild(d);d.scrollIntoView({behavior:'smooth'})}
+
+init();
+</script>
+</body>
+</html>
